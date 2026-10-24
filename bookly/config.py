@@ -21,6 +21,16 @@ TODAY = date.fromisoformat(os.getenv("BOOKLY_TODAY", "2026-10-24"))
 
 # --- Policy ---
 MAX_VERIFY_ATTEMPTS = 3  # failed email+ZIP tries before verification locks for the session
+RETURN_WINDOW_DAYS = 30  # physical books: returnable through day 30 after delivery, not day 31
+EBOOK_REFUND_DAYS = 7  # ebooks: refundable within 7 days of purchase, only if never downloaded
+RETURN_LABEL_FEE = 4.99  # charged once per change-of-mind return refunded to the original payment
+
+# What the customer is told about timing, by resolution. Dewey repeats these; it never invents one.
+RESOLUTION_TIMING = {
+    "refund_original": "Refund to your original payment 5-7 business days after the return arrives.",
+    "store_credit": "Store credit is added to your account as soon as the return arrives.",
+    "replacement": "A replacement ships within 1-2 business days; send the original back with the prepaid label.",
+}
 
 # --- Paths ---
 ROOT = Path(__file__).resolve().parent.parent

@@ -6,7 +6,7 @@ from functools import cache
 from bookly.config import PROMPTS_DIR, TODAY
 
 # Order matters: rules first, then voice, then procedures.
-PROMPT_FILES = ["base.md", "dewey.md", "order_status.md"]
+PROMPT_FILES = ["base.md", "dewey.md", "order_status.md", "returns.md"]
 
 
 @cache  # the prompt never changes during a run, which also keeps it byte-identical for prompt caching

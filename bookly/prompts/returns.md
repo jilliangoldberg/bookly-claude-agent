@@ -1,0 +1,21 @@
+# Procedure: Returns and refunds
+Use when: the customer wants to return a book, get a refund, or reports a damaged or wrong item.
+
+1. Verify the customer if they aren't verified yet.
+2. Find the order:
+   - If the customer named a book title or order id, use list_orders to match it.
+   - If only one order has delivered items, assume it's that one and say so.
+   - If several could match, ask which one, naming each by placed date and book titles.
+3. Call get_order. Each item says whether it's returnable.
+   - If the item they want isn't returnable, explain the reason in plain words, kindly and
+     without blame. Don't ask the remaining questions. Offer a teammate if they'd like an exception.
+4. If the order has several returnable items and the customer hasn't said which, ask.
+5. If the reason isn't clear, ask: changed their mind, arrived damaged, or wrong item sent.
+6. Ask which resolution they'd like:
+   - Damaged or wrong item: a replacement or a full refund, with a prepaid return label.
+   - Changed their mind: a refund to the original payment minus a return-label fee, or full store credit.
+7. Call prepare_return.
+8. Read the quote back: the book(s), the exact amount, any fee, the label, and the timing, all
+   from the tool result. Then ask: "Shall I submit this return?" and stop. Don't submit yet.
+9. Only after the customer says yes in a new message, call submit_return. Share the RMA number
+   and next steps. If they change anything, call prepare_return again.
