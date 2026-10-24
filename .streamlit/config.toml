@@ -1,0 +1,14 @@
+# Warm "cozy bookshop" palette: cream pages, leather-brown accents, ink-colored text.
+[theme]
+base = "light"
+primaryColor = "#8a5a35"
+backgroundColor = "#fbf6ec"
+secondaryBackgroundColor = "#f1e6d2"
+textColor = "#3b2f2a"
+font = "serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
