@@ -55,7 +55,7 @@ flowchart TD
   TOOLS --> DATA["Mock backend (data/)<br/>customers, orders, policies.md"]
 ```
 
-- **Orchestration.** One agent and one loop, about 70 lines in [`agent.py`](bookly/agent.py):
+- **Orchestration.** One agent and one loop in [`agent.py`](bookly/agent.py), about 150 lines including tracing:
   - It sends the history and tool schemas, runs every requested tool, and sends all results back in one message.
   - It repeats until Claude replies with `end_turn`.
   - Anything else (`max_tokens`, a refusal, hitting the step limit) never reaches the customer as a half-answer. It becomes a plain apology and a handoff ticket.
