@@ -20,15 +20,17 @@ def client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def handle_user_message(session: SessionState, text: str) -> str:
-    """Take one customer message, run the LLM/tool loop, and return Dewey's reply."""
+def handle_user_message(session: SessionState, text: str, api: anthropic.Anthropic | None = None) -> str:
+    """Take one customer message, run the LLM/tool loop, and return Dewey's reply.
+    `api` lets tests and evals pass a fake or recording client; normally it's the real one."""
+    api = api or client()
     session.turn_index += 1
     checkpoint = len(session.messages)  # where this turn starts, so a failed turn can be undone
     session.messages.append({"role": "user", "content": text})
 
     try:
         for _ in range(MAX_AGENT_STEPS):
-            response = call_llm(session)
+            response = call_llm(session, api)
             # Append the full content (including thinking blocks), unchanged: history stays append-only.
             session.messages.append({"role": "assistant", "content": response.content})
 
@@ -67,10 +69,10 @@ def hand_off(session: SessionState, checkpoint: int, text: str, why: str) -> str
     return reply
 
 
-def call_llm(session: SessionState) -> anthropic.types.Message:
+def call_llm(session: SessionState, api: anthropic.Anthropic) -> anthropic.types.Message:
     """Make one Messages API call with the full history and record it in the trace."""
     started = time.monotonic()
-    response = client().messages.create(
+    response = api.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         system=build_system_prompt(),
