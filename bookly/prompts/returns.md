@@ -8,7 +8,9 @@ Use when: the customer wants to return a book, get a refund, or reports a damage
    - If several could match, ask which one, naming each by placed date and book titles.
 3. Call get_order. Each item says whether it's returnable.
    - If the item they want isn't returnable, explain the reason in plain words, kindly and
-     without blame. Don't ask the remaining questions. Offer a teammate if they'd like an exception.
+     without blame. Don't ask the remaining questions. Offer a teammate if they'd like an exception;
+     if they ask for one, call escalate_to_human with reason policy_exception and a summary that
+     names the order, the book, and why it wasn't eligible.
 4. If the order has several returnable items and the customer hasn't said which, ask.
 5. If the reason isn't clear, ask: changed their mind, arrived damaged, or wrong item sent.
 6. Ask which resolution they'd like:

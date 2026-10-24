@@ -10,9 +10,13 @@ def tool_ok(**data) -> dict:
     return {"ok": True, **data}
 
 
-def tool_error(error_code: str, message: str) -> dict:
-    """Build a failed tool result. The message must be safe for Dewey to paraphrase to the customer."""
-    return {"ok": False, "error_code": error_code, "message": message}
+def tool_error(error_code: str, message: str, hint: str | None = None) -> dict:
+    """Build a failed tool result. `message` is safe to paraphrase to the customer;
+    `hint` tells the model what to do next and is never meant for the customer."""
+    result = {"ok": False, "error_code": error_code, "message": message}
+    if hint:
+        result["hint"] = hint
+    return result
 
 
 @dataclass
@@ -54,4 +58,5 @@ class SessionState:
     verified_first_name: str | None = None  # so Dewey can say "Happy reading, Maya"
     verify_attempts: int = 0  # failed verification tries this session
     quotes: dict[str, Quote] = field(default_factory=dict)  # quote_id -> Quote, so submit can't use made-up numbers
+    escalation: dict | None = None  # the handoff ticket, once one exists; one per session
     trace: list[TraceEvent] = field(default_factory=list)

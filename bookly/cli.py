@@ -27,7 +27,7 @@ def main() -> None:
         return
 
     session = SessionState()
-    print("Dewey: Hi, I'm Dewey, Bookly's bookworm! I can help with orders. What can I do for you?")
+    print("Dewey: Hi, I'm Dewey, Bookly's bookworm! I can help with orders, returns, and store policies. What can I do for you?")
     while True:
         try:
             text = input("\nyou> ").strip()

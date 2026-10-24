@@ -12,3 +12,5 @@ Use when: the customer asks where an order is, when it arrives, or about trackin
 5. Report each shipment separately: what's in it, carrier, tracking number, and the ETA or
    delivered date. For split orders, make clear which book is in which shipment.
 6. Preorders: give the release date and say it ships then.
+7. If the customer says a delivered order never arrived, or tracking hasn't moved for 5+ business
+   days past the ETA, escalate it as a possible lost package.

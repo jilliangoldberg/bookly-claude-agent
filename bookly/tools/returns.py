@@ -5,7 +5,7 @@ agent is forced to confirm before committing, in code rather than by asking nice
 from bookly.config import RESOLUTION_TIMING, TODAY
 from bookly.models import Quote, SessionState, tool_error, tool_ok
 from bookly.policy import INELIGIBLE_EXPLANATIONS, ineligible_reason, quote_amounts, resolution_allowed
-from bookly.tools.orders import NOT_VERIFIED, find_order, returned_item_ids
+from bookly.tools.orders import NOT_VERIFIED, find_order, order_not_found, returned_item_ids
 
 PREPARE_RETURN_SCHEMA = {
     "name": "prepare_return",
@@ -52,14 +52,22 @@ def prepare_return(session: SessionState, order_id: str, item_ids: list[str], re
         return NOT_VERIFIED
     order = find_order(session, order_id)
     if order is None:
-        return tool_error("NOT_FOUND", f"No order {order_id.strip().upper()} on this account.")
+        return order_not_found(order_id)
     if not resolution_allowed(reason, resolution):
-        return tool_error("INVALID_RESOLUTION", "Replacements are only for damaged or wrong items.")
+        return tool_error(
+            "INVALID_RESOLUTION",
+            "Replacements are only for damaged or wrong items.",
+            hint="Offer a refund to the original payment or store credit instead.",
+        )
 
     items_by_id = {item["item_id"]: item for item in order["items"]}
     unknown = [i for i in item_ids if i not in items_by_id]
     if unknown or not item_ids:
-        return tool_error("ITEM_NOT_IN_ORDER", f"These items aren't in {order['order_id']}: {unknown or 'none given'}.")
+        return tool_error(
+            "ITEM_NOT_IN_ORDER",
+            "I couldn't match that book to this order.",
+            hint=f"Use item ids from get_order for {order['order_id']}; these weren't in it: {unknown or 'none given'}.",
+        )
 
     already_returned = returned_item_ids(session, order)
     eligible, ineligible = [], []
@@ -73,7 +81,12 @@ def prepare_return(session: SessionState, order_id: str, item_ids: list[str], re
                                "explanation": INELIGIBLE_EXPLANATIONS[code]})
 
     if not eligible:
-        return {**tool_error("INELIGIBLE", "None of these items can be returned."), "ineligible_items": ineligible}
+        ineligible_error = tool_error(
+            "INELIGIBLE",
+            "None of these items can be returned.",
+            hint="Explain each item's explanation kindly. If they want an exception, offer escalate_to_human.",
+        )
+        return {**ineligible_error, "ineligible_items": ineligible}
 
     amounts = quote_amounts(eligible, reason, resolution)
     quote = Quote(
@@ -101,13 +114,18 @@ def submit_return(session: SessionState, quote_id: str) -> dict:
     """Turn a confirmed quote into an RMA. Refuses if the customer hasn't replied since the quote."""
     quote = session.quotes.get(quote_id)
     if quote is None:
-        return tool_error("QUOTE_NOT_FOUND", "There's no quote with that id. Prepare the return first.")
+        return tool_error(
+            "QUOTE_NOT_FOUND",
+            "I need to price the return before submitting it.",
+            hint="Call prepare_return first and use the quote_id it returns.",
+        )
     if quote.rma_number:  # idempotent: a repeat call returns the same RMA instead of a second return
         return tool_ok(rma_number=quote.rma_number, already_submitted=True)
     if session.turn_index <= quote.created_turn:
         return tool_error(
             "CONFIRMATION_REQUIRED",
-            "The customer hasn't confirmed this quote yet. Read it back and wait for their reply.",
+            "I need your OK on these details before I submit the return.",
+            hint="Read the quote back to the customer and stop. Submit only after they say yes in a new message.",
         )
 
     quote.rma_number = f"RMA-{quote.order_id.removeprefix('BK-')}-{quote.quote_id.removeprefix('Q-')}"

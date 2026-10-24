@@ -1,12 +1,33 @@
 """Order tools: read-only lookups, scoped to the verified customer. The customer ID always
 comes from the session, never from tool input, so the LLM can't ask for someone else's orders."""
 
+import re
+
 from bookly import data
 from bookly.config import TODAY
 from bookly.models import SessionState, tool_error, tool_ok
 from bookly.policy import INELIGIBLE_EXPLANATIONS, ineligible_reason
 
-NOT_VERIFIED = tool_error("NOT_VERIFIED", "The customer must be verified with email and ZIP first.")
+NOT_VERIFIED = tool_error(
+    "NOT_VERIFIED",
+    "I need to verify your account before I can look at orders.",
+    hint="Ask for the account email and ZIP code together, then call verify_customer.",
+)
+
+
+def normalize_order_id(raw: str) -> str:
+    """Turn what a customer typed ('1005', '#bk-1005', 'BK 1005') into the canonical 'BK-1005'."""
+    digits = re.sub(r"\D", "", raw)
+    return f"BK-{digits}" if digits else raw.strip().upper()
+
+
+def order_not_found(order_id: str) -> dict:
+    """The one 'not found' answer, used whether the order is someone else's or doesn't exist."""
+    return tool_error(
+        "NOT_FOUND",
+        f"I can't find order {normalize_order_id(order_id)} on this account.",
+        hint="Don't suggest the order belongs to someone else. Offer to look at the customer's own orders.",
+    )
 
 LIST_ORDERS_SCHEMA = {
     "name": "list_orders",
@@ -26,7 +47,9 @@ GET_ORDER_SCHEMA = {
     ),
     "input_schema": {
         "type": "object",
-        "properties": {"order_id": {"type": "string", "description": "Order id like BK-1001"}},
+        "properties": {
+            "order_id": {"type": "string", "description": "Order id like BK-1001. Pass what the customer typed; code normalizes it."}
+        },
         "required": ["order_id"],
         "additionalProperties": False,
     },
@@ -68,7 +91,7 @@ def list_orders(session: SessionState) -> dict:
 
 def find_order(session: SessionState, order_id: str) -> dict | None:
     """Look up an order only if it belongs to the verified customer; otherwise None."""
-    wanted = order_id.strip().upper()
+    wanted = normalize_order_id(order_id)
     return next(
         (o for o in data.orders() if o["order_id"] == wanted and o["customer_id"] == session.verified_customer_id),
         None,
@@ -102,8 +125,7 @@ def get_order(session: SessionState, order_id: str) -> dict:
 
     order = find_order(session, order_id)
     if order is None:
-        # Same answer whether the order is someone else's or doesn't exist, so nothing leaks.
-        return tool_error("NOT_FOUND", f"No order {order_id.strip().upper()} on this account.")
+        return order_not_found(order_id)  # same answer for someone else's order and a fake one, so nothing leaks
 
     details = {k: v for k, v in order.items() if k != "customer_id"}
     details["items"] = [{**item, **item_returnability(session, order, item)} for item in order["items"]]

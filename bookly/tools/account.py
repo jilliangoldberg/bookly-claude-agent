@@ -29,7 +29,11 @@ VERIFY_CUSTOMER_SCHEMA = {
 def verify_customer(session: SessionState, email: str, zip_code: str) -> dict:
     """Check email + ZIP against the customer list; on a match, mark the session verified."""
     if session.verify_attempts >= MAX_VERIFY_ATTEMPTS:
-        return tool_error("VERIFY_LOCKED", "Too many failed attempts. Verification is locked for this chat.")
+        return tool_error(
+            "VERIFY_LOCKED",
+            "Too many failed attempts, so verification is locked for this chat.",
+            hint="Don't ask for details again. Offer escalate_to_human with reason verification_failed.",
+        )
 
     match = next(
         (
@@ -41,7 +45,11 @@ def verify_customer(session: SessionState, email: str, zip_code: str) -> dict:
     )
     if match is None:
         session.verify_attempts += 1
-        return tool_error("VERIFY_FAILED", VERIFY_FAILED_MESSAGE)
+        return tool_error(
+            "VERIFY_FAILED",
+            VERIFY_FAILED_MESSAGE,
+            hint="Ask the customer to double-check both. Never say which one was wrong.",
+        )
 
     session.verified_customer_id = match["customer_id"]
     session.verified_first_name = match["first_name"]
