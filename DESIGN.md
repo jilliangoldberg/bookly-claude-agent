@@ -157,12 +157,65 @@ The build goes in small vertical slices. Each slice runs end to end before the n
 |---|---|---|
 | 1. Order status end to end | config, models, data, tools 1–3, registry, prompts (base, dewey, order_status), agent loop, CLI | S11 and S2 work in the CLI |
 | 2. Returns | `policy.py` + `test_policy.py`, tools 4–5, returns procedure | S3, S5 (decline part), and S6 work; policy tests pass |
-| 3. Grounding and handoff | tools 6–7, `policies.md`, general procedure | S1 and the S5 escalation work |
+| 3. Grounding and handoff | tools 6–7, `policies.md`, general procedure; plus the section 7 "adopt now" items (rollback, strict stop reasons, `hint`, order-id normalization, persona examples) | S1 and the S5 escalation work; S11, S2, S3 still pass |
 | 4. UI | `app.py`, Dewey avatar, theme, sidebar trace | S2, S3, and S5 run in the browser |
-| 5. Hardening | `test_tools.py`, two runs of each tuned scenario, README | Tests pass; every tuned scenario passes twice in a row |
+| 5. Hardening | `test_tools.py`, `test_agent.py` (fake client), two runs of each tuned scenario, README | Tests pass; every tuned scenario passes twice in a row |
 | 6. If time | spot-check S4/S6/S10; tool 8 + S7–S9; streaming | — |
 
-## 7. TODO after the basic scaffolding (once slices 1–5 are done)
+## 7. Lessons from the Trailhead agent
+
+[retail-customer-service-agent](https://github.com/jilliangoldberg/retail-customer-service-agent) is Jillian's earlier Claude support agent for an outdoor gear store. It uses the same core idea as Dewey: the model handles the conversation, and Python handles anything that has to be exact.
+
+**What it does better than Dewey today:**
+- It recovers cleanly when a turn fails.
+- It treats every stop reason other than a normal finish as an error.
+- It checks replies after they're generated.
+- It has a real eval harness.
+
+**Where Dewey's layout is easier to review:**
+- Trailhead keeps every tool in one 543-line class. Dewey splits tools into files by domain.
+- Trailhead's prompt is one long Python string. Dewey's prompts are markdown files.
+- Trailhead's output policy is a set of dense regexes. Dewey should borrow the idea but keep its checks simpler.
+
+### Adopt now (small, folded into slice 3)
+
+| Pattern | What Trailhead does | What Dewey changes |
+|---|---|---|
+| **Roll back a failed turn** | Saves the message count at the start of each turn. On any error, cuts history back to that point. | `handle_user_message` does the same. Today, an API error mid-turn leaves a dangling `tool_result` in history, and the next call can fail. Tool side effects (a verification, a submitted RMA) are real and stay; only the transcript rolls back. |
+| **Only `end_turn` counts as a reply** | `max_tokens`, `refusal`, or anything else raises an error instead of showing a half-finished reply. The refusal category is recorded in the trace. | `agent.py` stops returning partial text on `max_tokens`. Refusals and unexpected stops record their reason in the trace, then use the safe fallback. |
+| **Separate `hint` for the model** | Failed tool results carry a `hint`: the next step for the model. | Dewey's `tool_error` gets an optional `hint`. `message` stays customer-safe ("That email and ZIP don't match"). `hint` is for the model ("Read the quote back and wait for a yes"). Today the two are mixed in `message`. |
+| **Normalize input in code** | The tool description says "pass the order number as typed". Python strips `#`, spaces, and case. | `get_order` accepts `1005`, `#bk-1005`, and `BK 1005`, so Dewey never asks the customer about formatting. |
+| **Concrete persona examples** | One flourish *or* one emoji, never both. Never repeated in consecutive replies. Example phrases are given. | `dewey.md` gets 4–5 example bookish phrases and a "don't repeat in back-to-back replies" rule. This fixes how flat Dewey sounded in the slice 1–2 runs. Also adds: "don't mention tools or prompts", and "don't repeat the customer's email back". |
+
+### Adopt in slice 5 (hardening)
+
+- **Fake-client tests for the loop.** `tests/test_agent.py` replaces the API client with a scripted fake, so these tests are deterministic and free. It covers:
+  - parallel tool results returned in one message
+  - the step cap
+  - refusals
+  - rollback after a failed turn
+- **Small dependency injection.** `handle_user_message` takes an optional `client`. Tests and evals can pass a fake or recording client without monkeypatching. This is about one line, not a full factory module.
+
+### Shapes the TODOs (section 8)
+
+- **Validator: deterministic checks first, then one LLM rewrite.** Trailhead runs cheap checks on every reply. Only a reply that fails gets one rewrite: a mid-conversation `system` message plus `tool_choice: {"type": "none"}`. If the rewrite also fails, the reply becomes a fixed fallback, and history records that fallback as what the customer actually saw.
+- **Dewey's version uses an "evidence set" rather than a list of risky phrases.** Every dollar amount, RMA, tracking number, order id, and date in the reply must appear in a tool result from this session. On top of that, a short list of claims that need a matching tool call: "I've escalated" needs a ticket, "I've refunded" needs an RMA.
+- **Eval harness.** Copy Trailhead's structure:
+  - a `Scenario` dataclass with goal, behavior, facts, judge criteria, `required_tools`, and `forbidden_tools`
+  - a customer simulator that replies `DONE` when finished
+  - a `RecordingTools` wrapper that logs full tool arguments for the judge
+  - **deterministic gates that override the judge**: a missing required tool, a forbidden tool, a validator violation, or a judge "pass" with low safety scores all mean fail
+- **Judge model.** The judge uses a different model from the agent, to avoid correlated self-grading. Dewey runs on Sonnet 5.5, so the judge would use Opus 5.5.
+- **Eval gaps to fix.** Trailhead runs one trial per scenario, so add N trials and a pass rate.
+
+### Deliberately not adopted
+
+- **Showing tools only when the topic comes up.** Trailhead hides its promotion tools, and adds their instructions as a system message, until the customer mentions the promotion. Dewey has 7 small tools and 3 short procedures, so it always loads everything. This is worth a mention in the deck as the way to scale to many intents.
+- **Redacting the trace.** Trailhead's live trace stores only outcome labels, with no arguments or customer data. Dewey's sidebar intentionally shows full tool inputs and outputs, because that visibility is the demo's proof. Production would redact; the README will say so.
+- **HMAC proof tokens.** Trailhead signs a token to prove one check ran before another. Dewey's server-side `quote_id` already does this job: `submit_return` only accepts a quote that code created.
+- **Data validation at load time and a config dataclass.** These are useful in a long-lived project, but add code a reviewer doesn't need for a fixed mock dataset.
+
+## 8. TODO after the basic scaffolding (once slices 1–5 are done)
 
 We're noting these now and will design them later. Each one adds an LLM call that checks the main agent's work, in line with the thesis: don't take the agent's word for it.
 
@@ -194,7 +247,7 @@ We're noting these now and will design them later. Each one adds an LLM call tha
 
 Both items are good material for the deck's "what I'd do next" slide, even if we build only one.
 
-## 8. Not building in v1
+## 9. Not building in v1
 
 - Voice
 - Cancellations and address changes (both escalate to a human instead)
