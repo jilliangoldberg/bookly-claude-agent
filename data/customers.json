@@ -1,0 +1,5 @@
+[
+  {"customer_id": "C001", "first_name": "Maya", "last_name": "Chen", "email": "maya.chen@example.com", "zip_code": "94110"},
+  {"customer_id": "C002", "first_name": "Daniel", "last_name": "Okafor", "email": "daniel.okafor@example.com", "zip_code": "10027"},
+  {"customer_id": "C003", "first_name": "Priya", "last_name": "Raman", "email": "priya.raman@example.com", "zip_code": "60614"}
+]

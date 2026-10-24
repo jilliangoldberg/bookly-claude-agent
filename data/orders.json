@@ -1,0 +1,93 @@
+[
+  {
+    "order_id": "BK-1001",
+    "customer_id": "C001",
+    "placed_date": "2026-10-08",
+    "order_type": "standard",
+    "items": [
+      {"item_id": "I-1", "title": "The Lighthouse Archive", "format": "paperback", "price": 16.99, "shipment_id": "S1"},
+      {"item_id": "I-2", "title": "Salt & Static", "format": "hardcover", "price": 27.00, "shipment_id": "S1"}
+    ],
+    "shipments": [
+      {"shipment_id": "S1", "status": "delivered", "carrier": "UPS", "tracking": "1Z999AA10123450001", "shipped_date": "2026-10-09", "delivered_date": "2026-10-14", "eta": null}
+    ],
+    "returns": []
+  },
+  {
+    "order_id": "BK-1002",
+    "customer_id": "C001",
+    "placed_date": "2026-10-20",
+    "order_type": "standard",
+    "items": [
+      {"item_id": "I-3", "title": "A Field Guide to Quiet", "format": "paperback", "price": 14.50, "shipment_id": "S1"}
+    ],
+    "shipments": [
+      {"shipment_id": "S1", "status": "in_transit", "carrier": "UPS", "tracking": "1Z999AA10123456784", "shipped_date": "2026-10-21", "delivered_date": null, "eta": "2026-10-27"}
+    ],
+    "returns": []
+  },
+  {
+    "order_id": "BK-1003",
+    "customer_id": "C002",
+    "placed_date": "2026-09-01",
+    "order_type": "standard",
+    "items": [
+      {"item_id": "I-4", "title": "Northern Lines", "format": "hardcover", "price": 24.00, "shipment_id": "S1"}
+    ],
+    "shipments": [
+      {"shipment_id": "S1", "status": "delivered", "carrier": "USPS", "tracking": "9400111899223100000003", "shipped_date": "2026-09-02", "delivered_date": "2026-09-08", "eta": null}
+    ],
+    "returns": []
+  },
+  {
+    "order_id": "BK-1004",
+    "customer_id": "C002",
+    "placed_date": "2026-10-20",
+    "order_type": "digital",
+    "items": [
+      {"item_id": "I-5", "title": "The Quiet Engine", "format": "ebook", "price": 9.99, "purchased_date": "2026-10-20", "downloaded": true}
+    ],
+    "shipments": [],
+    "returns": []
+  },
+  {
+    "order_id": "BK-1005",
+    "customer_id": "C003",
+    "placed_date": "2026-10-15",
+    "order_type": "standard",
+    "items": [
+      {"item_id": "I-6", "title": "Gardens of Ash", "format": "paperback", "price": 15.99, "shipment_id": "S1"},
+      {"item_id": "I-7", "title": "Gardens of Ash: Part Two", "format": "hardcover", "price": 26.00, "shipment_id": "S2"}
+    ],
+    "shipments": [
+      {"shipment_id": "S1", "status": "delivered", "carrier": "USPS", "tracking": "9400111899223100067890", "shipped_date": "2026-10-17", "delivered_date": "2026-10-22", "eta": null},
+      {"shipment_id": "S2", "status": "in_transit", "carrier": "USPS", "tracking": "9400111899223100012345", "shipped_date": "2026-10-23", "delivered_date": null, "eta": "2026-10-28"}
+    ],
+    "returns": []
+  },
+  {
+    "order_id": "BK-1006",
+    "customer_id": "C003",
+    "placed_date": "2026-10-14",
+    "order_type": "standard",
+    "items": [
+      {"item_id": "I-8", "title": "The Cartographer's Daughter", "format": "hardcover", "price": 29.00, "shipment_id": "S1"}
+    ],
+    "shipments": [
+      {"shipment_id": "S1", "status": "delivered", "carrier": "UPS", "tracking": "1Z999AA10123450006", "shipped_date": "2026-10-16", "delivered_date": "2026-10-21", "eta": null}
+    ],
+    "returns": []
+  },
+  {
+    "order_id": "BK-1007",
+    "customer_id": "C003",
+    "placed_date": "2026-10-01",
+    "order_type": "preorder",
+    "release_date": "2026-11-18",
+    "items": [
+      {"item_id": "I-9", "title": "Winter Protocol", "format": "hardcover", "price": 28.00}
+    ],
+    "shipments": [],
+    "returns": []
+  }
+]
