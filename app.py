@@ -8,6 +8,7 @@ from pathlib import Path
 import anthropic
 import streamlit as st
 
+from bookly.actions import cancel_return, confirm_return
 from bookly.agent import handle_user_message
 from bookly.data import customers
 from bookly.models import SessionState
@@ -65,6 +66,72 @@ def handle_input(text: str) -> None:
     st.session_state.chat.append(("assistant", reply))
 
 
+def record_action_reply(result: dict, reply: str) -> None:
+    """Record the deterministic result shown to the customer and future model turns."""
+    session = st.session_state.agent_session
+    session.messages.append({"role": "assistant", "content": reply})
+    st.session_state.chat.append(("assistant", reply))
+
+
+def confirm_pending_return(token: str) -> None:
+    """Submit the exact proposal selected by the application's Confirm button."""
+    result = confirm_return(st.session_state.agent_session, token)
+    if result["ok"]:
+        titles = ", ".join(result["item_titles"])
+        reply = (
+            f"Your return for **{titles}** has been submitted. "
+            f"Your RMA is **{result['rma_number']}**. {result['next_steps']}"
+        )
+    else:
+        reply = result["message"]
+    record_action_reply(result, reply)
+
+
+def cancel_pending_return(token: str) -> None:
+    """Cancel the exact proposal selected by the application's Cancel button."""
+    result = cancel_return(st.session_state.agent_session, token)
+    reply = (
+        "I've cancelled that return proposal. No return was submitted."
+        if result["ok"]
+        else result["message"]
+    )
+    record_action_reply(result, reply)
+
+
+def render_confirmation(session: SessionState) -> None:
+    """Render canonical proposal details with application-controlled actions."""
+    pending = session.pending_action
+    if pending is None:
+        return
+    quote = session.quotes[pending.quote_id]
+    with st.container(border=True):
+        st.subheader("Confirm this return")
+        st.caption("The return is submitted only when you use the Confirm return button.")
+        st.markdown(f"**Books:** {', '.join(quote.item_titles)}")
+        st.markdown(f"**Order:** `{quote.order_id}`")
+        st.markdown(f"**Resolution:** {quote.resolution.replace('_', ' ')}")
+        st.markdown(f"**Refund amount:** {escape_dollars(f'${quote.refund_amount:.2f}')}")
+        if quote.fee:
+            st.markdown(f"**Return-label fee:** {escape_dollars(f'${quote.fee:.2f}')}")
+        st.markdown(f"**Timing:** {quote.timing}")
+        confirm, cancel = st.columns(2)
+        confirm.button(
+            "Confirm return",
+            type="primary",
+            key=f"confirm-{pending.token}",
+            on_click=confirm_pending_return,
+            args=(pending.token,),
+            use_container_width=True,
+        )
+        cancel.button(
+            "Cancel",
+            key=f"cancel-{pending.token}",
+            on_click=cancel_pending_return,
+            args=(pending.token,),
+            use_container_width=True,
+        )
+
+
 def render_demo_accounts() -> None:
     """Sidebar: the mock customers' login details plus sample things to say."""
     with st.expander("Demo accounts", expanded=False):
@@ -84,7 +151,19 @@ def render_session_state(session: SessionState) -> None:
         st.markdown(f"🔒 Not verified · failed attempts: {session.verify_attempts}")
 
     for quote in session.quotes.values():
-        status = f"submitted · `{quote.rma_number}`" if quote.rma_number else "awaiting customer's yes"
+        submitted = next(
+            (
+                result
+                for result in session.action_results.values()
+                if (
+                    result.get("ok")
+                    and result.get("status") == "submitted"
+                    and result.get("quote_id") == quote.quote_id
+                )
+            ),
+            None,
+        )
+        status = f"submitted · `{submitted['rma_number']}`" if submitted else "proposal only"
         st.markdown(
             f"🧾 Quote `{quote.quote_id}` · {quote.order_id} · {escape_dollars(f'${quote.refund_amount:.2f}')} "
             f"({quote.resolution.replace('_', ' ')}) · {status}"
@@ -132,8 +211,10 @@ header_text.title("Dewey")
 header_text.markdown('<p class="dewey-subtitle">Bookly’s bookworm support assistant</p>', unsafe_allow_html=True)
 
 render_chat()
+render_confirmation(st.session_state.agent_session)
 if text := st.chat_input("Ask Dewey about an order, a return, or a policy..."):
     handle_input(text)
+    st.rerun()
 
 # The sidebar is drawn last so it reflects whatever the message above just changed.
 with st.sidebar:

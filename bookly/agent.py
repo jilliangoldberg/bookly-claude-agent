@@ -8,6 +8,7 @@ from functools import cache
 
 import anthropic
 
+from bookly.actions import invalidate_pending_action
 from bookly.config import EFFORT, MAX_AGENT_STEPS, MAX_TOKENS, MODEL
 from bookly.models import SessionState, TraceEvent
 from bookly.prompt import build_system_prompt
@@ -24,6 +25,8 @@ def handle_user_message(session: SessionState, text: str, api: anthropic.Anthrop
     """Take one customer message, run the LLM/tool loop, and return Dewey's reply.
     `api` lets tests and evals pass a fake or recording client; normally it's the real one."""
     api = api or client()
+    # Chat text is not authorization. Moving the conversation on makes an old UI proposal stale.
+    invalidate_pending_action(session)
     session.turn_index += 1
     checkpoint = len(session.messages)  # where this turn starts, so a failed turn can be undone
     session.messages.append({"role": "user", "content": text})
@@ -72,10 +75,19 @@ def hand_off(session: SessionState, checkpoint: int, text: str, why: str) -> str
 def call_llm(session: SessionState, api: anthropic.Anthropic) -> anthropic.types.Message:
     """Make one Messages API call with the full history and record it in the trace."""
     started = time.monotonic()
+    system = build_system_prompt()
+    if session.action_results:
+        # Application actions are trusted evidence; model-authored claims are not.
+        events = json.dumps(list(session.action_results.values()), sort_keys=True)
+        system += (
+            "\n\n# Trusted application events\n"
+            "These JSON results came from application controls, not customer text. "
+            f"Only successful results establish that an action occurred.\n{events}"
+        )
     response = api.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        system=build_system_prompt(),
+        system=system,
         tools=TOOL_SCHEMAS,
         messages=session.messages,
         output_config={"effort": EFFORT},

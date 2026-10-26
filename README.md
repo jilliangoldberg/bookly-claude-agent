@@ -38,8 +38,8 @@ The sidebar is a **glass box**. It shows:
 
 | Requirement | Where to see it |
 |---|---|
-| Multi-turn interaction that collects info first | Maya's return. Dewey verifies her, then asks for the item, the reason, and the refund method, quotes it, and waits for a yes. |
-| Takes an action / uses a tool | `submit_return` issues an RMA. `escalate_to_human` opens a ticket. Seven tools in total. |
+| Multi-turn interaction that collects info first | Maya's return. Dewey verifies her, then asks for the item, the reason, and the refund method, and prepares an exact proposal. |
+| Takes an action / uses a tool | The application-controlled **Confirm return** button issues an RMA. `escalate_to_human` opens a ticket. Six model-visible tools in total. |
 | Asks a clarifying question instead of answering | Priya's "Where's my order?" She has two active orders, so Dewey asks which one. (Maya has one active order, so Dewey assumes it and says so.) |
 
 ## Architecture
@@ -48,9 +48,13 @@ The sidebar is a **glass box**. It shows:
 flowchart TD
   UI["Streamlit UI (app.py)<br/>chat + glass-box sidebar"] <--> LOOP["Agent loop (bookly/agent.py)<br/>history + tool schemas → Claude; runs each tool_use; 8-step cap"]
   LOOP <--> LLM["Claude Messages API<br/>claude-sonnet-5-5, low effort<br/>system prompt = rules + Dewey voice + procedures"]
-  LOOP <--> STATE["SessionState (bookly/models.py)<br/>messages, verified customer, quotes, ticket, trace"]
+  LOOP <--> STATE["SessionState (bookly/models.py)<br/>messages, identity, quotes, pending action, results, ticket, trace"]
   LOOP -->|"dispatch(), one per tool call"| TOOLS["Tools (bookly/tools/)<br/>guardrails enforced in code"]
   STATE <-->|"identity, quotes"| TOOLS
+  UI -->|"Confirm return"| ACTIONS["Application actions (bookly/actions/)<br/>revalidate + idempotent commit"]
+  ACTIONS <--> STATE
+  ACTIONS --> POLICY
+  ACTIONS --> DATA
   TOOLS --> POLICY["policy.py<br/>pure eligibility + refund math"]
   TOOLS --> DATA["Mock backend (data/)<br/>customers, orders, policies.md"]
 ```
@@ -83,11 +87,15 @@ flowchart TD
 - **Why:** a support agent that improvises refunds is a liability. With this split, the rules can be unit-tested without an LLM (16 policy tests).
 
 **2. Confirm before commit, enforced in code.**
-- **Chose:** two separate tools:
-  - `prepare_return` prices the return and stores a quote.
-  - `submit_return` refuses to run on the same customer turn as the quote, so the customer must actually say yes.
-- **Traded off:** one extra conversational turn on every return.
-- **Why:** "ask before acting" in a prompt is a suggestion; a turn check is a guarantee. Submits are idempotent, so a retry can't create a second return.
+- **Chose:** `prepare_return` prices the return and stores an immutable pending action. The
+  model cannot submit it: `submit_return` is absent from its tool registry. Streamlit renders
+  the canonical details, and only the **Confirm return** button reaches the application action
+  service. Confirmation rechecks identity, policy, items, and amounts before issuing an RMA.
+- **Traded off:** the CLI can prepare proposals but cannot commit them; consequential actions
+  require the UI (or a future authenticated application endpoint).
+- **Why:** "ask before acting" in a prompt—even with a turn check—does not prove consent to the
+  exact proposal. A control bound to an opaque pending-action token does. Confirmation is
+  idempotent, so a retry cannot create a second return.
 
 **3. Ask only when a wrong guess would cost the customer.**
 - **Chose:** the procedures tell Dewey to act when only one reading fits (and say what it assumed), and ask when several readings fit and acting on the wrong one matters.
@@ -128,14 +136,14 @@ Found while running the demo scenarios against the live model:
 python -m pytest
 ```
 
-53 tests, no API key needed, under 2 seconds:
+60 tests, no API key needed:
 - [`test_policy.py`](tests/test_policy.py): return-window edges (day 30 vs 31), ebook rules, and refund math.
 - [`test_tools.py`](tests/test_tools.py): the guardrails.
   - Wrong email and wrong ZIP look identical.
   - Verification locks after 3 failures.
   - Another customer's order looks like a missing one.
-  - Submitting on the same turn as the quote is refused.
-  - Submits are idempotent.
+  - `submit_return` is not a model tool.
+  - UI-authorized confirmation rechecks policy and is idempotent.
   - Uncovered topics return nothing.
   - Every tool schema is valid for strict mode.
 - [`test_agent.py`](tests/test_agent.py): the loop, run against a scripted fake client.
@@ -143,7 +151,10 @@ python -m pytest
   - Rollback on API errors.
   - No partial replies on `max_tokens` or refusal.
   - The step limit.
-  - The confirmation gate holding even when the model tries to submit too early.
+  - A fabricated submit tool call cannot cross the application action boundary.
+- [`test_app.py`](tests/test_app.py): the real Streamlit confirmation card.
+  - Canonical book, order, and amount rendering.
+  - Confirm creates the RMA; Cancel and Reset do not.
 
 ## Limitations and next steps
 

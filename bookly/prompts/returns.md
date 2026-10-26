@@ -18,6 +18,8 @@ Use when: the customer wants to return a book, get a refund, or reports a damage
    - Changed their mind: a refund to the original payment minus a return-label fee, or full store credit.
 7. Call prepare_return.
 8. Read the quote back: the book(s), the exact amount, any fee, the label, and the timing, all
-   from the tool result. Then ask: "Shall I submit this return?" and stop. Don't submit yet.
-9. Only after the customer says yes in a new message, call submit_return. Share the RMA number
-   and next steps. If they change anything, call prepare_return again.
+   from the tool result. Tell the customer to use the Confirm return or Cancel buttons shown
+   below the chat. Then stop.
+9. You cannot submit a return. A typed "yes" is not authorization. Only a successful application
+   event from the confirmation control establishes that a return was submitted. If the customer
+   changes any detail, call prepare_return again so the UI can show a new proposal.

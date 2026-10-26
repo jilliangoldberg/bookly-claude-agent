@@ -3,6 +3,8 @@ Tools are called directly through dispatch(), exactly as the agent calls them. N
 
 import pytest
 
+from bookly import data
+from bookly.actions import cancel_return, confirm_return
 from bookly.models import SessionState
 from bookly.tools import TOOL_SCHEMAS, dispatch
 
@@ -50,6 +52,18 @@ def test_verification_locks_after_three_failures():
     assert dispatch("verify_customer", MAYA, session)["error_code"] == "VERIFY_LOCKED"
 
 
+def test_successful_verification_cannot_be_replaced_mid_session():
+    session = verified_maya()
+    result = dispatch(
+        "verify_customer",
+        {"email": "daniel.okafor@example.com", "zip_code": "10027"},
+        session,
+    )
+    assert result["already_verified"] is True
+    assert session.verified_customer_id == result["customer_id"] == "C001"
+    assert session.verified_first_name == result["first_name"] == "Maya"
+
+
 def test_other_customers_order_looks_like_a_missing_one():
     session = verified_maya()
     someone_elses = dispatch("get_order", {"order_id": "BK-1003"}, session)  # Daniel's order
@@ -69,38 +83,62 @@ def test_order_ids_are_normalized_in_code(typed):
     assert dispatch("get_order", {"order_id": typed}, verified_maya())["ok"]
 
 
-# --- Returns: confirm before commit ---
+# --- Returns: application confirmation before commit ---
 
 def test_quote_amounts_come_from_code():
     quote = maya_quote(verified_maya())
     assert (quote["refund_amount"], quote["fee"], quote["label"]) == (22.01, 4.99, "fee_deducted")
 
 
-def test_submit_on_the_same_turn_as_the_quote_is_refused():
+def test_submit_is_not_a_model_tool():
     session = verified_maya()
-    quote = maya_quote(session)
-    assert dispatch("submit_return", {"quote_id": quote["quote_id"]}, session)["error_code"] == "CONFIRMATION_REQUIRED"
+    maya_quote(session)
+    assert "submit_return" not in {schema["name"] for schema in TOOL_SCHEMAS}
+    assert dispatch("submit_return", {"quote_id": "Q-1"}, session)["error_code"] == "UNKNOWN_TOOL"
+    assert session.action_results == {}
 
 
-def test_submit_after_the_customer_replies_succeeds_and_is_idempotent():
+def test_ui_confirmation_succeeds_and_is_idempotent():
     session = verified_maya()
-    quote = maya_quote(session)
-    session.turn_index += 1  # the customer said "yes" in a new message
-    first = dispatch("submit_return", {"quote_id": quote["quote_id"]}, session)
-    second = dispatch("submit_return", {"quote_id": quote["quote_id"]}, session)
+    maya_quote(session)
+    token = session.pending_action.token
+    first = confirm_return(session, token)
+    second = confirm_return(session, token)
     assert first["ok"] and second["already_submitted"]
     assert first["rma_number"] == second["rma_number"]
+    assert session.pending_action is None
 
 
-def test_submit_rejects_a_made_up_quote():
-    assert dispatch("submit_return", {"quote_id": "Q-99"}, verified_maya())["error_code"] == "QUOTE_NOT_FOUND"
+def test_ui_confirmation_rejects_a_made_up_action():
+    assert confirm_return(verified_maya(), "PA-99")["error_code"] == "ACTION_NOT_FOUND"
+
+
+def test_ui_confirmation_rechecks_policy(monkeypatch):
+    session = verified_maya()
+    maya_quote(session)
+    token = session.pending_action.token
+    order = next(order for order in data.orders() if order["order_id"] == "BK-1001")
+    monkeypatch.setitem(order["shipments"][0], "status", "in_transit")
+    result = confirm_return(session, token)
+    assert result["error_code"] == "ACTION_STALE"
+    assert session.pending_action is None
+    assert not any(r.get("status") == "submitted" for r in session.action_results.values())
+
+
+def test_ui_cancel_clears_the_proposal_without_submitting():
+    session = verified_maya()
+    maya_quote(session)
+    token = session.pending_action.token
+    result = cancel_return(session, token)
+    assert result["ok"] and result["status"] == "cancelled"
+    assert session.pending_action is None
+    assert not any(r.get("status") == "submitted" for r in session.action_results.values())
 
 
 def test_returned_item_cannot_be_returned_again():
     session = verified_maya()
-    quote = maya_quote(session)
-    session.turn_index += 1
-    dispatch("submit_return", {"quote_id": quote["quote_id"]}, session)
+    maya_quote(session)
+    confirm_return(session, session.pending_action.token)
     again = maya_quote(session, resolution="store_credit")
     assert again["error_code"] == "INELIGIBLE"
     assert again["ineligible_items"][0]["reason_code"] == "ALREADY_RETURNED"

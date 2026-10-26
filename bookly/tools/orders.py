@@ -103,9 +103,9 @@ def returned_item_ids(session: SessionState, order: dict) -> set[str]:
     on_file = {item_id for r in order["returns"] for item_id in r["item_ids"]}
     this_chat = {
         item_id
-        for q in session.quotes.values()
-        if q.order_id == order["order_id"] and q.rma_number
-        for item_id in q.item_ids
+        for result in session.action_results.values()
+        if result.get("ok") and result.get("order_id") == order["order_id"]
+        for item_id in result.get("item_ids", [])
     }
     return on_file | this_chat
 

@@ -1,9 +1,7 @@
-"""Return tools, split in two on purpose: prepare_return prices a return and stores a quote;
-submit_return acts on it, but only after the customer has replied. That split is how the
-agent is forced to confirm before committing, in code rather than by asking nicely in the prompt."""
+"""Return proposal tool. It prices a return for the UI but can never submit one."""
 
 from bookly.config import RESOLUTION_TIMING, TODAY
-from bookly.models import Quote, SessionState, tool_error, tool_ok
+from bookly.models import PendingAction, Quote, SessionState, tool_error, tool_ok
 from bookly.policy import INELIGIBLE_EXPLANATIONS, ineligible_reason, quote_amounts, resolution_allowed
 from bookly.tools.orders import NOT_VERIFIED, find_order, order_not_found, returned_item_ids
 
@@ -31,23 +29,9 @@ PREPARE_RETURN_SCHEMA = {
     },
 }
 
-SUBMIT_RETURN_SCHEMA = {
-    "name": "submit_return",
-    "description": (
-        "Submit a quoted return and issue an RMA number. Only call this after the customer has clearly said "
-        "yes to the quote in a new message. If they change anything, call prepare_return again instead."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {"quote_id": {"type": "string", "description": "The quote_id from prepare_return"}},
-        "required": ["quote_id"],
-        "additionalProperties": False,
-    },
-}
-
-
 def prepare_return(session: SessionState, order_id: str, item_ids: list[str], reason: str, resolution: str) -> dict:
-    """Check each item against policy, price the eligible ones, and store a quote for later submission."""
+    """Check policy, price eligible items, and stage an immutable UI-authorized proposal."""
+    session.pending_action = None
     if session.verified_customer_id is None:
         return NOT_VERIFIED
     order = find_order(session, order_id)
@@ -93,48 +77,29 @@ def prepare_return(session: SessionState, order_id: str, item_ids: list[str], re
         quote_id=f"Q-{len(session.quotes) + 1}",
         order_id=order["order_id"],
         item_ids=[item["item_id"] for item in eligible],
+        item_titles=[item["title"] for item in eligible],
         reason=reason,
         resolution=resolution,
+        timing=RESOLUTION_TIMING[resolution],
         created_turn=session.turn_index,
         **amounts,
     )
     session.quotes[quote.quote_id] = quote
+    pending = PendingAction(
+        token=f"PA-{len(session.quotes)}",
+        kind="submit_return",
+        customer_id=session.verified_customer_id,
+        quote_id=quote.quote_id,
+        created_turn=session.turn_index,
+    )
+    session.pending_action = pending
     return tool_ok(
         quote_id=quote.quote_id,
         eligible_items=[{"item_id": i["item_id"], "title": i["title"], "price": i["price"]} for i in eligible],
         ineligible_items=ineligible,
         resolution=resolution,
-        timing=RESOLUTION_TIMING[resolution],
+        timing=quote.timing,
         **amounts,
-        next_step="Read this quote back to the customer and ask them to confirm before calling submit_return.",
-    )
-
-
-def submit_return(session: SessionState, quote_id: str) -> dict:
-    """Turn a confirmed quote into an RMA. Refuses if the customer hasn't replied since the quote."""
-    quote = session.quotes.get(quote_id)
-    if quote is None:
-        return tool_error(
-            "QUOTE_NOT_FOUND",
-            "I need to price the return before submitting it.",
-            hint="Call prepare_return first and use the quote_id it returns.",
-        )
-    if quote.rma_number:  # idempotent: a repeat call returns the same RMA instead of a second return
-        return tool_ok(rma_number=quote.rma_number, already_submitted=True)
-    if session.turn_index <= quote.created_turn:
-        return tool_error(
-            "CONFIRMATION_REQUIRED",
-            "I need your OK on these details before I submit the return.",
-            hint="Read the quote back to the customer and stop. Submit only after they say yes in a new message.",
-        )
-
-    quote.rma_number = f"RMA-{quote.order_id.removeprefix('BK-')}-{quote.quote_id.removeprefix('Q-')}"
-    label = "prepaid return label" if quote.label == "prepaid" else f"return label (${quote.fee:.2f} deducted from refund)"
-    return tool_ok(
-        rma_number=quote.rma_number,
-        refund_amount=quote.refund_amount,
-        resolution=quote.resolution,
-        label_url=f"https://bookly.example.com/labels/{quote.rma_number}.pdf",  # mock
-        next_steps=f"We've emailed a {label}. Pack the book(s) and drop them off within 14 days. "
-                   + RESOLUTION_TIMING[quote.resolution],
+        pending_action_token=pending.token,
+        next_step="Read this quote back, then tell the customer to use the Confirm return or Cancel buttons.",
     )

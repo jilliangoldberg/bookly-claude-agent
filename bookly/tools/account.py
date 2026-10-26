@@ -28,6 +28,12 @@ VERIFY_CUSTOMER_SCHEMA = {
 
 def verify_customer(session: SessionState, email: str, zip_code: str) -> dict:
     """Check email + ZIP against the customer list; on a match, mark the session verified."""
+    if session.verified_customer_id is not None:
+        return tool_ok(
+            customer_id=session.verified_customer_id,
+            first_name=session.verified_first_name,
+            already_verified=True,
+        )
     if session.verify_attempts >= MAX_VERIFY_ATTEMPTS:
         return tool_error(
             "VERIFY_LOCKED",

@@ -4,7 +4,7 @@ model and runs whatever it asks for through dispatch(), which never raises."""
 from bookly.models import SessionState, tool_error
 from bookly.tools.account import VERIFY_CUSTOMER_SCHEMA, verify_customer
 from bookly.tools.orders import GET_ORDER_SCHEMA, LIST_ORDERS_SCHEMA, get_order, list_orders
-from bookly.tools.returns import PREPARE_RETURN_SCHEMA, SUBMIT_RETURN_SCHEMA, prepare_return, submit_return
+from bookly.tools.returns import PREPARE_RETURN_SCHEMA, prepare_return
 from bookly.tools.support import ESCALATE_SCHEMA, SEARCH_POLICIES_SCHEMA, escalate_to_human, search_policies
 
 # name -> (python function, JSON schema the model sees)
@@ -13,7 +13,6 @@ REGISTRY = {
     "list_orders": (list_orders, LIST_ORDERS_SCHEMA),
     "get_order": (get_order, GET_ORDER_SCHEMA),
     "prepare_return": (prepare_return, PREPARE_RETURN_SCHEMA),
-    "submit_return": (submit_return, SUBMIT_RETURN_SCHEMA),
     "search_policies": (search_policies, SEARCH_POLICIES_SCHEMA),
     "escalate_to_human": (escalate_to_human, ESCALATE_SCHEMA),
 }

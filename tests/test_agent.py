@@ -6,9 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from bookly.actions import confirm_return
 from bookly.agent import handle_user_message
 from bookly.config import MAX_AGENT_STEPS, MODEL
 from bookly.models import SessionState
+from bookly.tools import dispatch
 
 USAGE = SimpleNamespace(input_tokens=10, output_tokens=5, cache_read_input_tokens=0)
 
@@ -58,6 +60,27 @@ def test_request_shape():
     assert "Dewey" in request["system"]
 
 
+def test_successful_application_action_is_trusted_system_context():
+    session = SessionState(turn_index=1)
+    dispatch("verify_customer", {"email": "maya.chen@example.com", "zip_code": "94110"}, session)
+    dispatch(
+        "prepare_return",
+        {
+            "order_id": "BK-1001",
+            "item_ids": ["I-2"],
+            "reason": "changed_mind",
+            "resolution": "refund_original",
+        },
+        session,
+    )
+    result = confirm_return(session, session.pending_action.token)
+
+    fake = FakeClient(text_reply(f"Your RMA is {result['rma_number']}."))
+    handle_user_message(session, "What is my RMA?", api=fake)
+    assert "Trusted application events" in fake.requests[0]["system"]
+    assert result["rma_number"] in fake.requests[0]["system"]
+
+
 def test_tool_result_is_sent_back_and_the_loop_continues():
     fake = FakeClient(
         tool_calls(("search_policies", {"query": "ship to Canada"})),
@@ -90,23 +113,24 @@ def test_failed_tool_is_marked_as_an_error():
     assert result["is_error"] is True and "NOT_VERIFIED" in result["content"]
 
 
-def test_confirmation_gate_holds_through_the_loop():
-    """Even if the model tries to submit in the same turn it quoted, code refuses."""
+def test_chat_cannot_submit_and_a_new_message_invalidates_the_proposal():
+    """Even a fabricated submit tool call cannot cross the application action boundary."""
     session = SessionState()
     verify = ("verify_customer", {"email": "maya.chen@example.com", "zip_code": "94110"})
     prepare = ("prepare_return", {"order_id": "BK-1001", "item_ids": ["I-2"], "reason": "changed_mind", "resolution": "refund_original"})
     fake = FakeClient(
-        tool_calls(verify), tool_calls(prepare), tool_calls(("submit_return", {"quote_id": "Q-1"})),
-        text_reply("Shall I submit this return?"),
+        tool_calls(verify), tool_calls(prepare), text_reply("Use the Confirm return button."),
     )
     handle_user_message(session, "Return Salt & Static, changed my mind, refund please. maya.chen@example.com 94110", api=fake)
-    submit = [e for e in session.trace if e.name == "submit_return"][0]
-    assert submit.output["error_code"] == "CONFIRMATION_REQUIRED"
-    assert session.quotes["Q-1"].rma_number is None
+    token = session.pending_action.token
 
-    fake = FakeClient(tool_calls(("submit_return", {"quote_id": "Q-1"})), text_reply("Done! RMA-1001-1."))
+    fake = FakeClient(tool_calls(("submit_return", {"quote_id": "Q-1"})), text_reply("I cannot submit it in chat."))
     handle_user_message(session, "yes", api=fake)
-    assert session.quotes["Q-1"].rma_number == "RMA-1001-1"
+    submit = [e for e in session.trace if e.name == "submit_return"][0]
+    assert submit.output["error_code"] == "UNKNOWN_TOOL"
+    assert session.pending_action is None
+    assert session.action_results[token]["status"] == "invalidated"
+    assert not any(result.get("status") == "submitted" for result in session.action_results.values())
 
 
 def test_api_error_rolls_back_the_turn():

@@ -50,6 +50,8 @@ def main() -> None:
             continue
         print_new_tool_calls(session, shown)
         print(f"\nDewey: {reply}")
+        if session.pending_action:
+            print(f"{DIM}(Return proposal {session.pending_action.token} is ready; confirm or cancel it in Streamlit.){RESET}")
 
 
 if __name__ == "__main__":
