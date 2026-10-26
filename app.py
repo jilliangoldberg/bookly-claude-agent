@@ -4,6 +4,7 @@ UI only; all logic is in bookly/. Run: streamlit run app.py"""
 
 import base64
 import json
+import random
 from pathlib import Path
 
 import anthropic
@@ -26,6 +27,18 @@ SAMPLE_PROMPTS = {
 
 # Openers shown under the greeting before the customer has typed anything.
 QUICK_PROMPTS = ["Where's my order?", "Start a return", "Do you ship to Canada?"]
+
+# While Dewey works: plain typing dots, a line naming the tool step, or (only on a slow turn
+# with no tool yet) one of these, faded in after a few seconds.
+TOOL_STATUS = {
+    "verify_customer": "Checking your account…",
+    "list_orders": "Looking through your orders…",
+    "get_order": "Pulling up your order…",
+    "prepare_return": "Working out your refund…",
+    "search_policies": "Checking store policy…",
+    "escalate_to_human": "Passing this to a teammate…",
+}
+SLOW_TURN_LINES = ["Flipping through the pages…", "Still reading…", "Checking the shelves…"]
 
 # Small "chat window" layout: a story column on the left, a fixed-height chat card on the right.
 CSS = """
@@ -69,6 +82,18 @@ CSS = """
   .st-key-chat-log [data-testid="stChatMessageAvatarUser"] { display: none; }
   [data-testid="stChatMessage"] p { margin-bottom: 0.4rem; }
 
+  .typing { display: flex; align-items: center; gap: 10px; min-height: 1.6rem; color: var(--muted); }
+  .typing .dots { display: inline-flex; gap: 4px; }
+  .typing .dots i { width: 6px; height: 6px; border-radius: 50%; background: #9aa58c;
+    animation: bob 1.2s infinite ease-in-out; }
+  .typing .dots i:nth-child(2) { animation-delay: 0.15s; }
+  .typing .dots i:nth-child(3) { animation-delay: 0.3s; }
+  .typing-line { font-size: 0.85rem; font-style: italic; animation: fade-in 0.3s both; }
+  .typing-line.slow { animation: fade-in 0.6s 4s both; }
+  @keyframes bob { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+                   30% { transform: translateY(-4px); opacity: 1; } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
   .st-key-quick-prompts button, .st-key-new-chat button { font-size: 0.75rem; min-height: 0;
     padding: 0.2rem 0.55rem; border-color: var(--line); color: var(--muted); }
   .st-key-new-chat button { border: 0; background: transparent; text-decoration: underline; }
@@ -89,6 +114,16 @@ def new_conversation() -> None:
     st.session_state.chat = [("assistant", GREETING)]  # what the customer sees, kept apart from raw API history
 
 
+def typing_html(line: str | None = None) -> str:
+    """Animated dots, plus either what Dewey is doing now or a fallback that fades in on slow turns.
+    Lines are fixed per tool: model-supplied values (order IDs, emails) are never echoed here."""
+    if line:
+        text = f'<span class="typing-line">{line}</span>'
+    else:
+        text = f'<span class="typing-line slow">{random.choice(SLOW_TURN_LINES)}</span>'
+    return f'<div class="typing"><span class="dots"><i></i><i></i><i></i></span>{text}</div>'
+
+
 def render_chat() -> None:
     """Draw every message in the transcript."""
     for role, text in st.session_state.chat:
@@ -102,12 +137,18 @@ def handle_input(text: str) -> None:
     st.chat_message("user").markdown(escape_dollars(text))
 
     with st.chat_message("assistant", avatar=DEWEY_AVATAR):
-        with st.spinner("Dewey is flipping through the pages..."):
-            try:
-                reply = handle_user_message(st.session_state.agent_session, text)
-            except anthropic.APIError as exc:
-                reply = f"Sorry, I couldn't reach my bookshelf just now ({type(exc).__name__}). Please try again."
-        st.markdown(escape_dollars(reply))
+        status = st.empty()
+        status.markdown(typing_html(), unsafe_allow_html=True)
+
+        def show_step(tool_name: str, _tool_input: dict) -> None:
+            if line := TOOL_STATUS.get(tool_name):
+                status.markdown(typing_html(line), unsafe_allow_html=True)
+
+        try:
+            reply = handle_user_message(st.session_state.agent_session, text, on_step=show_step)
+        except anthropic.APIError as exc:
+            reply = f"Sorry, I couldn't reach my bookshelf just now ({type(exc).__name__}). Please try again."
+        status.markdown(escape_dollars(reply))
     st.session_state.chat.append(("assistant", reply))
 
 

@@ -106,6 +106,19 @@ def test_parallel_tool_calls_return_together_in_one_message():
     assert [r["tool_use_id"] for r in results] == ["call_0", "call_1"]
 
 
+def test_on_step_reports_each_tool_before_it_runs():
+    fake = FakeClient(
+        tool_calls(("search_policies", {"query": "ship to Canada"}), ("list_orders", {})),
+        text_reply("Done."),
+    )
+    session = SessionState()
+    seen = []
+    on_step = lambda name, tool_input: seen.append((name, tool_input, len(session.trace)))
+    assert handle_user_message(session, "hi", api=fake, on_step=on_step) == "Done."
+    # One LLM event is traced before the first tool; each tool is reported before its own trace event.
+    assert seen == [("search_policies", {"query": "ship to Canada"}, 1), ("list_orders", {}, 2)]
+
+
 def test_failed_tool_is_marked_as_an_error():
     fake = FakeClient(tool_calls(("list_orders", {})), text_reply("Let's verify you first."))
     handle_user_message(SessionState(), "my orders?", api=fake)

@@ -4,6 +4,7 @@ skipped by clever prompting."""
 
 import json
 import time
+from collections.abc import Callable
 from functools import cache
 
 import anthropic
@@ -21,9 +22,19 @@ def client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def handle_user_message(session: SessionState, text: str, api: anthropic.Anthropic | None = None) -> str:
+# Called with (tool name, tool input) just before each tool runs, so a UI can show progress.
+StepCallback = Callable[[str, dict], None]
+
+
+def handle_user_message(
+    session: SessionState,
+    text: str,
+    api: anthropic.Anthropic | None = None,
+    on_step: StepCallback | None = None,
+) -> str:
     """Take one customer message, run the LLM/tool loop, and return Dewey's reply.
-    `api` lets tests and evals pass a fake or recording client; normally it's the real one."""
+    `api` lets tests and evals pass a fake or recording client; normally it's the real one.
+    `on_step` is an optional progress hook; it observes the loop and cannot change it."""
     api = api or client()
     # Chat text is not authorization. Moving the conversation on makes an old UI proposal stale.
     invalidate_pending_action(session)
@@ -38,7 +49,7 @@ def handle_user_message(session: SessionState, text: str, api: anthropic.Anthrop
             session.messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "tool_use":
-                session.messages.append({"role": "user", "content": run_tools(session, response)})
+                session.messages.append({"role": "user", "content": run_tools(session, response, on_step)})
                 continue
             reply = reply_text(response)
             if response.stop_reason == "end_turn" and reply:
@@ -115,12 +126,16 @@ def call_llm(session: SessionState, api: anthropic.Anthropic) -> anthropic.types
     return response
 
 
-def run_tools(session: SessionState, response: anthropic.types.Message) -> list[dict]:
+def run_tools(
+    session: SessionState, response: anthropic.types.Message, on_step: StepCallback | None = None
+) -> list[dict]:
     """Run every tool call in the response and return their results, all in one user message."""
     results = []
     for block in response.content:
         if block.type != "tool_use":
             continue
+        if on_step:
+            on_step(block.name, block.input)
         output = run_tool(session, block.name, block.input)
         results.append(
             {

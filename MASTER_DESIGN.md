@@ -564,6 +564,28 @@ customer text, return reasons, addresses, tracking values, backend debug strings
 PII by default. Full exception details go to restricted server logs, not the customer UI or
 model context.
 
+### 14.3 Customer-visible progress
+
+While Dewey works, the chat shows what is actually happening rather than one fixed
+"thinking" line:
+
+- **Default:** animated typing dots with no text. Quick replies need nothing more.
+- **Tool steps:** the orchestrator accepts an optional `on_step(tool_name, tool_input)`
+  callback, called just before each tool runs. The experience layer maps tool names to fixed
+  lines such as "Checking your account…" or "Pulling up your order…".
+- **Slow turns:** if no tool step has been shown, one short bookish line fades in after about
+  four seconds, so long waits don't feel stuck.
+
+Rules:
+
+1. Status lines are fixed per tool. They never echo model-supplied values such as order IDs
+   or emails, so the evidence rules in section 11 don't apply to them and they can't leak or
+   misstate data.
+2. The callback only observes the loop. It cannot change tool inputs, results, or control
+   flow, and the orchestrator still does not import UI code.
+3. Status text is transient. It is replaced by the final reply and never enters the
+   canonical transcript or provider history.
+
 ## 15. Testing strategy
 
 The combined suite should preserve the complementary strengths of both versions.
@@ -597,6 +619,7 @@ The combined suite should preserve the complementary strengths of both versions.
 - single and parallel tool round trips
 - strict stop-reason handling
 - step cap
+- progress callback fires once per tool, before it runs
 - provider failure rollback
 - trace supersession
 - trusted action events remain after conversational recovery
