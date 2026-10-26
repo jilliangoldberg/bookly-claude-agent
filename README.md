@@ -21,7 +21,7 @@ Open the URL Streamlit prints (usually http://localhost:8501). There's also a te
 
 ## Try it
 
-Demo accounts are also listed in the app's sidebar.
+Demo accounts are also listed in the app's Developer view.
 
 | Customer | Email | ZIP | Try saying |
 |---|---|---|---|
@@ -30,7 +30,7 @@ Demo accounts are also listed in the app's sidebar.
 | Priya | priya.raman@example.com | 60614 | "Where's my order?" · "My Cartographer's Daughter arrived with a torn cover." |
 | anyone | none | none | "Do you ship to Canada?" · "Can I sell you my used books?" |
 
-The sidebar is a **glass box**. It shows:
+The Customer view is a small chat window. The Developer view is a **glass box**. It shows:
 - what code has committed to (verified customer, quotes, RMAs, tickets)
 - every LLM step and tool call, with full inputs and outputs
 
@@ -46,7 +46,7 @@ The sidebar is a **glass box**. It shows:
 
 ```mermaid
 flowchart TD
-  UI["Streamlit UI (app.py)<br/>chat + glass-box sidebar"] <--> LOOP["Agent loop (bookly/agent.py)<br/>history + tool schemas → Claude; runs each tool_use; 8-step cap"]
+  UI["Streamlit UI (app.py)<br/>chat window + glass-box Developer view"] <--> LOOP["Agent loop (bookly/agent.py)<br/>history + tool schemas → Claude; runs each tool_use; 8-step cap"]
   LOOP <--> LLM["Claude Messages API<br/>claude-sonnet-5-5, low effort<br/>system prompt = rules + Dewey voice + procedures"]
   LOOP <--> STATE["SessionState (bookly/models.py)<br/>messages, identity, quotes, pending action, results, ticket, trace"]
   LOOP -->|"dispatch(), one per tool call"| TOOLS["Tools (bookly/tools/)<br/>guardrails enforced in code"]

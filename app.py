@@ -1,7 +1,8 @@
-"""Streamlit UI: Dewey's chat on the left, a "glass box" sidebar on the right showing what code
-decided (session state) and every LLM step and tool call (trace). UI only; all logic is in bookly/.
-Run: streamlit run app.py"""
+"""Streamlit UI: a Customer view with Dewey's chat in a small window, and a Developer "glass box"
+view showing what code decided (session state) and every LLM step and tool call (trace).
+UI only; all logic is in bookly/. Run: streamlit run app.py"""
 
+import base64
 import json
 from pathlib import Path
 
@@ -23,12 +24,56 @@ SAMPLE_PROMPTS = {
     "C003": ["Where's my order?", "My Cartographer's Daughter arrived with a torn cover."],
 }
 
+# Openers shown under the greeting before the customer has typed anything.
+QUICK_PROMPTS = ["Where's my order?", "Start a return", "Do you ship to Canada?"]
+
+# Small "chat window" layout: a story column on the left, a fixed-height chat card on the right.
 CSS = """
 <style>
-  h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; }
-  [data-testid="stChatMessage"] { border-radius: 14px; padding: 0.6rem 0.9rem; }
-  [data-testid="stSidebar"] code { font-size: 0.78rem; }
-  .dewey-subtitle { color: #8a5a35; font-style: italic; margin-top: -0.6rem; }
+  :root { --ink: #3b2f2a; --muted: #8b7d70; --paper: #fffdf8; --leather: #8a5a35;
+          --line: #eadfcd; --dewey: #eef1e4; --you: #f8e3cc; }
+  header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stSidebar"],
+  [data-testid="stSidebarCollapsedControl"] { display: none; }
+  .block-container { max-width: 1080px; padding-top: 2rem; padding-bottom: 1rem; }
+  h1, h2, h3, h4 { font-family: Georgia, 'Times New Roman', serif; color: var(--ink); }
+
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand img { width: 40px; height: 40px; border-radius: 10px; background: #f6ead6; }
+  .brand h1 { font-size: 1.15rem; margin: 0; padding: 0; }
+  .brand p, .eyebrow, .scene-caption, .chat-date, .site-footer {
+    margin: 0; color: var(--muted); font: 11px/1.4 "Courier New", monospace;
+    letter-spacing: 1.6px; text-transform: uppercase; }
+  .story .eyebrow { margin-bottom: 0.4rem; }
+  .story h2 { font-size: 2.6rem; line-height: 1.12; letter-spacing: -1px; margin: 0.6rem 0; padding: 0; }
+  .story .intro { color: var(--muted); max-width: 340px; font-size: 0.95rem; }
+  .story img { display: block; width: 190px; margin: 1.6rem auto 0.4rem; }
+  .scene-caption { text-align: center; text-transform: none; }
+  .site-footer { display: flex; justify-content: space-between; margin-top: 2.5rem; }
+
+  .st-key-chat-window { background: var(--paper); border-radius: 16px !important;
+    border-color: var(--line) !important; box-shadow: 0 10px 40px #6b553f12; }
+  .desk { display: flex; align-items: center; gap: 12px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--line); }
+  .desk img { width: 38px; height: 38px; border-radius: 10px; background: #f6ead6; }
+  .desk h4 { font-size: 0.95rem; margin: 0; padding: 0; }
+  .desk p { margin: 0; color: var(--muted); font-size: 0.75rem; }
+  .desk .dot { display: inline-block; width: 6px; height: 6px; background: #7c9b78; margin-right: 5px; }
+  .desk .no { margin-left: auto; color: #b3a796; font: 10px "Courier New", monospace; }
+  .chat-date { text-align: center; padding: 18px 0 14px; }
+
+  .st-key-chat-log [data-testid="stChatMessage"] { padding: 0.55rem 0.85rem; border-radius: 12px;
+    background: var(--dewey); max-width: 90%; font-size: 0.92rem; gap: 0.6rem; }
+  .st-key-chat-log [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+    background: var(--you); margin-left: auto; width: fit-content; flex-direction: row-reverse; }
+  .st-key-chat-log [data-testid="stVerticalBlockBorderWrapper"] { font-size: 0.88rem; }
+  .st-key-chat-log [data-testid="stChatMessageAvatarUser"] { display: none; }
+  [data-testid="stChatMessage"] p { margin-bottom: 0.4rem; }
+
+  .st-key-quick-prompts button, .st-key-new-chat button { font-size: 0.75rem; min-height: 0;
+    padding: 0.2rem 0.55rem; border-color: var(--line); color: var(--muted); }
+  .st-key-new-chat button { border: 0; background: transparent; text-decoration: underline; }
+  .st-key-chat-window [data-testid="stChatInput"] { border-color: var(--line); }
+  [data-testid="stSegmentedControl"] { justify-content: flex-end; }
 </style>
 """
 
@@ -47,14 +92,14 @@ def new_conversation() -> None:
 def render_chat() -> None:
     """Draw every message in the transcript."""
     for role, text in st.session_state.chat:
-        avatar = DEWEY_AVATAR if role == "assistant" else "🙂"
+        avatar = DEWEY_AVATAR if role == "assistant" else None
         st.chat_message(role, avatar=avatar).markdown(escape_dollars(text))
 
 
 def handle_input(text: str) -> None:
     """Show the customer's message, run the agent, and show Dewey's reply."""
     st.session_state.chat.append(("user", text))
-    st.chat_message("user", avatar="🙂").markdown(escape_dollars(text))
+    st.chat_message("user").markdown(escape_dollars(text))
 
     with st.chat_message("assistant", avatar=DEWEY_AVATAR):
         with st.spinner("Dewey is flipping through the pages..."):
@@ -105,15 +150,18 @@ def render_confirmation(session: SessionState) -> None:
         return
     quote = session.quotes[pending.quote_id]
     with st.container(border=True):
-        st.subheader("Confirm this return")
+        st.markdown("#### Confirm this return")
         st.caption("The return is submitted only when you use the Confirm return button.")
-        st.markdown(f"**Books:** {', '.join(quote.item_titles)}")
-        st.markdown(f"**Order:** `{quote.order_id}`")
-        st.markdown(f"**Resolution:** {quote.resolution.replace('_', ' ')}")
-        st.markdown(f"**Refund amount:** {escape_dollars(f'${quote.refund_amount:.2f}')}")
+        lines = [
+            f"**Books:** {', '.join(quote.item_titles)}",
+            f"**Order:** `{quote.order_id}`",
+            f"**Resolution:** {quote.resolution.replace('_', ' ')}",
+            f"**Refund amount:** {escape_dollars(f'${quote.refund_amount:.2f}')}",
+        ]
         if quote.fee:
-            st.markdown(f"**Return-label fee:** {escape_dollars(f'${quote.fee:.2f}')}")
-        st.markdown(f"**Timing:** {quote.timing}")
+            lines.append(f"**Return-label fee:** {escape_dollars(f'${quote.fee:.2f}')}")
+        lines.append(f"**Timing:** {quote.timing}")
+        st.markdown("  \n".join(lines))
         confirm, cancel = st.columns(2)
         confirm.button(
             "Confirm return",
@@ -199,31 +247,91 @@ def render_trace(session: SessionState) -> None:
                     st.code(json.dumps(e.output, indent=2), language="json")
 
 
+def queue_prompt(text: str) -> None:
+    """Quick-prompt buttons hand their text to the next run, as if it were typed."""
+    st.session_state.queued_prompt = text
+
+
+def render_customer_view() -> None:
+    """A story column beside a small, fixed-height chat window."""
+    story, window = st.columns([1, 1.3], gap="large", vertical_alignment="center")
+    story.markdown(
+        f"""<div class="story">
+          <p class="eyebrow">Customer support</p>
+          <h2>Welcome to Bookly!</h2>
+          <p class="intro">Dewey can track an order, start a return, or answer a store policy question.</p>
+          <img src="{DEWEY_DATA_URI}" alt="Dewey the bookworm">
+          <p class="scene-caption">every book finds its reader.</p>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    with window.container(border=True, key="chat-window"):
+        st.markdown(
+            f"""<div class="desk">
+              <img src="{DEWEY_DATA_URI}" alt="">
+              <div><h4>Dewey</h4><p><span class="dot"></span>Bookly’s bookworm, here to help</p></div>
+              <span class="no">No. 001</span>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        log = st.container(height=380, border=False, key="chat-log")
+        with log:
+            st.markdown('<p class="chat-date">You’ve opened a book</p>', unsafe_allow_html=True)
+            render_chat()
+            render_confirmation(st.session_state.agent_session)
+
+        if len(st.session_state.chat) == 1:
+            with st.container(horizontal=True, key="quick-prompts"):
+                for prompt in QUICK_PROMPTS:
+                    st.button(prompt, on_click=queue_prompt, args=(prompt,))
+
+        typed = st.chat_input("Ask Dewey about an order, a return, or a policy...")
+        if text := typed or st.session_state.pop("queued_prompt", None):
+            with log:
+                handle_input(text)
+            st.rerun()
+
+        with st.container(horizontal=True, horizontal_alignment="right", key="new-chat"):
+            if st.button("Reset conversation"):
+                new_conversation()
+                st.rerun()
+
+
+def render_developer_view() -> None:
+    """The glass box: demo logins, what code has committed to, and every LLM/tool step."""
+    session = st.session_state.agent_session
+    left, right = st.columns([1, 1.6], gap="large")
+    with left:
+        render_demo_accounts()
+        render_session_state(session)
+    with right:
+        render_trace(session)
+
+
 # ---------------- Page ----------------
 st.set_page_config(page_title="Dewey · Bookly Support", page_icon=DEWEY_AVATAR, layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
+DEWEY_DATA_URI = "data:image/png;base64," + base64.b64encode(Path(DEWEY_AVATAR).read_bytes()).decode()
 if "agent_session" not in st.session_state:
     new_conversation()
 
-header_img, header_text = st.columns([1, 10])
-header_img.image(DEWEY_AVATAR, width=72)
-header_text.title("Dewey")
-header_text.markdown('<p class="dewey-subtitle">Bookly’s bookworm support assistant</p>', unsafe_allow_html=True)
+brand, mode_col = st.columns([3, 2], vertical_alignment="center")
+brand.markdown(
+    f"""<div class="brand"><img src="{DEWEY_DATA_URI}" alt="">
+      <div><h1>Bookly</h1><p>Stories, delivered</p></div></div>""",
+    unsafe_allow_html=True,
+)
+mode = mode_col.segmented_control(
+    "View", ["Customer", "Developer"], default="Customer", key="view_mode", label_visibility="collapsed"
+)
 
-render_chat()
-render_confirmation(st.session_state.agent_session)
-if text := st.chat_input("Ask Dewey about an order, a return, or a policy..."):
-    handle_input(text)
-    st.rerun()
+if mode == "Developer":
+    render_developer_view()
+else:
+    render_customer_view()
 
-# The sidebar is drawn last so it reflects whatever the message above just changed.
-with st.sidebar:
-    st.header("📖 Glass box")
-    if st.button("Reset conversation", use_container_width=True):
-        new_conversation()
-        st.rerun()
-    show_trace = st.toggle("Show trace", value=True)
-    render_demo_accounts()
-    render_session_state(st.session_state.agent_session)
-    if show_trace:
-        render_trace(st.session_state.agent_session)
+st.markdown(
+    '<div class="site-footer"><span>Bookly · Dewey support</span><span>📖</span></div>',
+    unsafe_allow_html=True,
+)
