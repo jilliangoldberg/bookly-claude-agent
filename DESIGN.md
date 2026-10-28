@@ -688,9 +688,10 @@ Output per run (`evals/results/<timestamp>/`, gitignored): `scorecard.md`, `resu
 **Measured cost:** a judged trial costs about $0.08 (Dewey ~$0.03, customer ~$0.006, judge
 ~$0.045); a gates-only trial about $0.035.
 
-**Scenario viewer (UI).** Reviewers can watch any scenario in the real chat window. One passing
-transcript per scenario is committed in `evals/showcase/` (`python -m evals showcase <run>`).
-*Load* replays it by re-running the recorded tool calls and button presses through the real
+**Scenario viewer (UI).** The Developer view lists the scenarios on the left; clicking one shows
+its conversation, grade pills, tool steps, and judge reasoning on the right without leaving the
+tab (modelled on Trailhead's eval page). One passing transcript per scenario is committed in
+`evals/showcase/` (`python -m evals showcase <run>`). Selecting a scenario replays it by re-running the recorded tool calls and button presses through the real
 code, so session state, trace, and the confirmation flow are genuine and chatting can continue;
 model replies are replayed as text. Tools are deterministic, so any mismatch with the recording
 is reported as drift (and a unit test fails), which flags a stale showcase after a data or

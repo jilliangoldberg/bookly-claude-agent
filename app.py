@@ -81,6 +81,23 @@ CSS = """
   .desk .dot { display: inline-block; width: 6px; height: 6px; background: #7c9b78; margin-right: 5px; }
   .desk .no { margin-left: auto; color: #b3a796; font: 10px "Courier New", monospace; }
   .chat-date { text-align: center; padding: 18px 0 14px; }
+  .pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -0.3rem 0 0.8rem; }
+  .pill { padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; border: 1px solid; }
+  .pill.ok { color: #4f6b4a; border-color: #b9c9b0; background: #eef1e4; }
+  .pill.bad { color: #9a3b2a; border-color: #e3b5a8; background: #fbe9e3; }
+  .pills .source { margin-left: auto; color: var(--muted); font-size: 0.75rem; }
+  /* Scenario list: compact, left-aligned rows that wrap long titles instead of "…". */
+  .st-key-scenario-list { gap: 0.4rem; }
+  [class*="st-key-load-"] button { justify-content: flex-start; min-height: 2.6rem; padding: 0.45rem 0.8rem;
+    font-size: 0.85rem; border-color: var(--line); }
+  [class*="st-key-load-"] button div, [class*="st-key-load-"] button span {
+    justify-content: flex-start !important; text-align: left !important; }
+  [class*="st-key-load-"] button * { white-space: normal !important; overflow: visible !important;
+    text-overflow: clip !important; }
+  .empty-panel { padding: 2.2rem 1.6rem; border: 1px dashed var(--line); border-radius: 16px;
+    background: var(--paper); color: var(--muted); font-size: 0.95rem; }
+  /* "Behind the scenes" under the customer chat: smaller headings than the page's own. */
+  .st-key-behind-scenes h3 { font-size: 1rem; margin-top: 0.4rem; }
   .replay-note { margin: 10px 0 0; padding: 6px 10px; border-radius: 8px; background: #f6ead6;
     color: var(--leather); font-size: 0.75rem; text-align: center; }
 
@@ -128,11 +145,10 @@ def new_conversation() -> None:
 
 
 def show_scenario(record: dict, session: SessionState, chat: list[tuple[str, str]], drift: list[str]) -> None:
-    """Put a scenario's conversation into the chat window and switch to the Customer view to watch it."""
+    """Make a scenario the current conversation: shown in the Developer view, and continuable as the customer."""
     st.session_state.agent_session = session
     st.session_state.chat = [("assistant", GREETING), *chat]
     st.session_state.loaded_scenario = {**record, "drift": drift}
-    st.session_state.view_mode = "Customer"
 
 
 def load_saved_scenario(scenario_id: str) -> None:
@@ -386,64 +402,96 @@ def render_customer_view() -> None:
                 new_conversation()
                 st.rerun()
 
+    # Behind the scenes, lined up under the chat: demo logins on the left, Dewey's state and steps on the right.
+    accounts, behind = st.columns([1, 1.3], gap="large")
+    with accounts:
+        render_demo_accounts()
+    with behind.container(key="behind-scenes"):
+        st.markdown('<p class="eyebrow">Behind the scenes</p>', unsafe_allow_html=True)
+        render_session_state(st.session_state.agent_session)
+        render_trace(st.session_state.agent_session)
 
-VERDICT_BADGE = {"pass": "✅ pass", "fail": "❌ fail", "invalid": "➖ invalid"}
+
+VERDICT_MARK = {"pass": "✅", "fail": "❌", "invalid": "➖", "unknown": "❔"}
 
 
-def render_scenarios() -> None:
-    """Eval scenarios a reviewer can load into the chat: a saved run (free) or a fresh live one."""
+def render_scenario_list() -> None:
+    """Left column: every eval scenario. Clicking one replays its saved run into the panel on the right."""
     saved = load_showcase()
-    # Open until something is loaded, then out of the way so its grades are visible.
-    expanded = st.session_state.loaded_scenario is None
-    with st.expander("Eval scenarios: load a full conversation into the chat", expanded=expanded):
-        st.caption(
-            "**Load** replays a saved eval run through the real tools, so session state and the trace fill in "
-            "and you can keep chatting. **Run live** plays a new simulated customer against the model "
-            "(about $0.04 and 30 seconds; graded by the deterministic checks only)."
-        )
+    loaded = st.session_state.loaded_scenario
+    st.markdown("#### Eval scenarios")
+    with st.container(key="scenario-list"):
         for scenario in SCENARIOS:
             record = saved.get(scenario.id)
-            name, verdict, load, live = st.columns([4, 1.2, 1, 1.1], vertical_alignment="center")
-            name.markdown(f"**{scenario.id}** · {scenario.title}  \n<small>{scenario.rationale}</small>",
-                          unsafe_allow_html=True)
-            verdict.markdown(VERDICT_BADGE.get(record["verdict"], "") if record else "no saved run")
-            load.button("Load", key=f"load-{scenario.id}", disabled=record is None,
-                        on_click=load_saved_scenario, args=(scenario.id,))
-            if live.button("Run live", key=f"live-{scenario.id}"):
-                st.session_state.live_run = scenario.id
-                st.rerun()
+            mark = VERDICT_MARK[record["verdict"]] if record else "·"
+            st.button(
+                f"{mark} {scenario.id} · {scenario.title}",
+                key=f"load-{scenario.id}",
+                help=scenario.rationale,
+                disabled=record is None,
+                type="primary" if loaded and loaded["scenario"] == scenario.id else "secondary",
+                on_click=load_saved_scenario,
+                args=(scenario.id,),
+                use_container_width=True,
+            )
+    st.caption("Saved runs replay through the real tools, so you can keep chatting from the Customer view.")
+    if loaded and st.button(f"Run {loaded['scenario']} live", key="run-live", use_container_width=True,
+                            help="A fresh simulated customer against the model: about $0.04 and 30 seconds, "
+                                 "graded by the deterministic checks only."):
+        st.session_state.live_run = loaded["scenario"]
+        st.rerun()
 
 
-def render_loaded_scenario() -> None:
-    """How the loaded scenario was graded: each deterministic check and each judge dimension."""
-    record = st.session_state.get("loaded_scenario")
-    if not record:
+def render_scenario_panel() -> None:
+    """Right column: the conversation as the customer saw it, then how it was graded."""
+    record = st.session_state.loaded_scenario
+    if record:
+        [scenario] = select([record["scenario"]])
+        source = "live run" if record.get("live") else "saved run"
+        st.markdown(f"#### {scenario.id}: {scenario.title} {VERDICT_MARK[record['verdict']]}")
+        passed = sum(g["ok"] for g in record["gates"])
+        pills = [f'<span class="pill {"ok" if passed == len(record["gates"]) else "bad"}">'
+                 f'checks {passed}/{len(record["gates"])}</span>']
+        pills += [f'<span class="pill {"ok" if v["verdict"] == "pass" else "bad"}">{d.replace("_", " ")}</span>'
+                  for d, v in record.get("judge", {}).items()]
+        st.markdown(f'<div class="pills">{"".join(pills)}<span class="source">{source}</span></div>',
+                    unsafe_allow_html=True)
+        for warning in record.get("drift", []):
+            st.warning(f"Replay drift: {warning}. The saved run may be out of date; re-run the evals.")
+    else:
+        st.markdown("#### Pick a scenario")
+        st.markdown(
+            '<div class="empty-panel">Choose an eval scenario on the left to see the whole conversation, '
+            "how it was graded, and the judge's reasoning.</div>",
+            unsafe_allow_html=True,
+        )
         return
-    source = "live run" if record.get("live") else "saved run"
-    st.subheader(f"{record['scenario']} grades · {source} · {VERDICT_BADGE[record['verdict']]}")
-    for warning in record.get("drift", []):
-        st.warning(f"Replay drift: {warning}. The saved run may be out of date; re-run the evals.")
-    for gate in record["gates"]:
-        st.markdown(f"{'✅' if gate['ok'] else '❌'} `{gate['name']}` {gate['detail']}")
+
+    with st.container(border=True, key="chat-window"):
+        with st.container(height=420, border=False, key="chat-log"):
+            render_chat()
+
+    tools = [e for e in record["events"] if e["kind"] == "tool"]
+    if tools:
+        steps = " → ".join(f"{e['name']} {'✓' if e['ok'] else '✗'}" for e in tools)
+        st.caption(f"Tools: {steps}. The full trace is under the chat on the Customer tab.")
+    with st.expander(f"Deterministic checks · {passed}/{len(record['gates'])} passed"):
+        for gate in record["gates"]:
+            st.markdown(f"{'✅' if gate['ok'] else '❌'} `{gate['name']}` {gate['detail']}")
     for dimension, verdict in record.get("judge", {}).items():
-        mark = {"pass": "✅", "fail": "❌", "unknown": "❔"}[verdict["verdict"]]
-        with st.expander(f"{mark} judge · {dimension}"):
+        with st.expander(f"{VERDICT_MARK[verdict['verdict']]} Judge · {dimension.replace('_', ' ')}"):
             st.markdown(escape_dollars(verdict["reasoning"]))
 
 
 def render_developer_view() -> None:
-    """The glass box: eval scenarios, demo logins, what code has committed to, and every LLM/tool step."""
-    session = st.session_state.agent_session
+    """Eval scenarios beside the selected conversation and its grades (the live chat's trace is on the Customer tab)."""
     if error := st.session_state.pop("live_error", None):
         st.error(error)
-    render_scenarios()
-    left, right = st.columns([1, 1.6], gap="large")
-    with left:
-        render_loaded_scenario()
-        render_demo_accounts()
-        render_session_state(session)
-    with right:
-        render_trace(session)
+    scenarios, panel = st.columns([1.15, 2.2], gap="large")
+    with scenarios:
+        render_scenario_list()
+    with panel:
+        render_scenario_panel()
 
 
 # ---------------- Page ----------------

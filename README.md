@@ -30,9 +30,11 @@ Demo accounts are also listed in the app's Developer view.
 | Priya | priya.raman@example.com | 60614 | "Where's my order?" · "My Cartographer's Daughter arrived with a torn cover." |
 | anyone | none | none | "Do you ship to Canada?" · "Can I sell you my used books?" |
 
-The Customer view is a small chat window. The Developer view is a **glass box**. It shows:
+The Customer view is a small chat window with a **glass box** right under it ("Behind the scenes"). It shows:
 - what code has committed to (verified customer, quotes, RMAs, tickets)
 - every LLM step and tool call, with full inputs and outputs
+
+The Developer view is the eval scenario viewer (see [Evals](#evals)).
 
 ## How it meets the assignment
 
@@ -185,9 +187,9 @@ python -m evals run                                       # all scenarios, 5 tri
 - **The scorecard** reports pass@1 and pass^k (all k trials pass) per scenario, plus cost. Each trial is also saved as a readable transcript under `evals/results/`.
 - **Calibration:** `python -m evals calibrate` compares the judge with human labels in `evals/labels.jsonl`.
 
-**Watch a scenario in the UI.** In the app's Developer view, *Eval scenarios* lists every scenario with its latest saved result:
-- **Load** replays a saved run (`evals/showcase/`) through the real tools and puts it in the chat window. It's free and instant, the session state and trace fill in, and you can keep chatting from where it ended. The Developer view shows how that run was graded.
-- **Run live** plays a fresh simulated customer against the model (about $0.04, gates only).
+**Watch a scenario in the UI.** The app's Developer view lists every eval scenario on the left, with its latest saved result. Click one and the right side shows the whole conversation as the customer saw it, how it was graded (each check and each judge dimension, with reasoning), and the tool steps. The full trace and session state for it appear under the chat on the Customer tab.
+- The saved run (`evals/showcase/`) is replayed through the real tools, so it's free and instant, and you can switch to the Customer view and keep chatting from where it ended.
+- **Run live** plays a fresh simulated customer for the selected scenario against the model (about $0.04, gates only).
 
 Refresh the saved runs after an eval pass with `python -m evals showcase evals/results/<run>` (it skips any run that no longer replays identically).
 

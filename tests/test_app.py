@@ -58,13 +58,19 @@ def test_loading_a_saved_scenario_fills_the_chat_and_session():
     app.run(timeout=10)
     next(b for b in app.button if b.key == "load-S3").click().run(timeout=10)
     assert not app.exception
-    assert app.session_state["view_mode"] == "Customer"
+    assert app.session_state["view_mode"] == "Developer"  # the conversation shows right here
     session = app.session_state["agent_session"]
     assert session.verified_customer_id == "C001"
     assert any(r.get("status") == "submitted" for r in session.action_results.values())
     page = " ".join(m.value for m in app.markdown)
-    assert "Eval scenario S3" in page and "RMA-1001-1" in page
+    assert "S3: Return a book end to end" in page and "RMA-1001-1" in page
 
+    app.session_state["view_mode"] = "Customer"  # the same conversation continues as the customer
+    app.run(timeout=10)
+    customer_page = " ".join(m.value for m in app.markdown)
+    assert "Eval scenario S3" in customer_page
+    assert "Verified: **Maya**" in customer_page  # the glass box sits under the chat on this tab
+    assert any("prepare_return" in e.label for e in app.expander)
     next(b for b in app.button if b.label == "Reset conversation").click().run(timeout=10)
     assert app.session_state["loaded_scenario"] is None
 
