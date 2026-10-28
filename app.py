@@ -54,8 +54,17 @@ CSS = """
 <style>
   :root { --ink: #3b2f2a; --muted: #8b7d70; --paper: #fffdf8; --leather: #8a5a35;
           --line: #eadfcd; --dewey: #eef1e4; --you: #f8e3cc; }
-  header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stSidebar"],
-  [data-testid="stSidebarCollapsedControl"] { display: none; }
+  /* Keep the header (it holds the sidebar's open button) but make it invisible apart from that button. */
+  header[data-testid="stHeader"] { background: transparent; }
+  [data-testid="stToolbarActions"], [data-testid="stAppDeployButton"], [data-testid="stMainMenu"],
+  [data-testid="stDecoration"] { display: none; }
+  /* The sidebar's open button, as a small always-visible "Behind the scenes" callout. */
+  [data-testid="stExpandSidebarButton"] { gap: 6px; padding: 5px 12px 5px 8px; margin: 6px 0 0 6px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--leather);
+    box-shadow: 0 4px 14px #6b553f14; opacity: 1 !important; visibility: visible !important; }
+  [data-testid="stExpandSidebarButton"]::after { content: "Behind the scenes";
+    font: 12px Georgia, 'Times New Roman', serif; color: var(--leather); white-space: nowrap; }
+  [data-testid="stExpandSidebarButton"]:hover { background: #f6ead6; }
   .block-container { max-width: 1080px; padding-top: 2rem; padding-bottom: 1rem; }
   h1, h2, h3, h4 { font-family: Georgia, 'Times New Roman', serif; color: var(--ink); }
 
@@ -96,8 +105,9 @@ CSS = """
     text-overflow: clip !important; }
   .empty-panel { padding: 2.2rem 1.6rem; border: 1px dashed var(--line); border-radius: 16px;
     background: var(--paper); color: var(--muted); font-size: 0.95rem; }
-  /* "Behind the scenes" under the customer chat: smaller headings than the page's own. */
-  .st-key-behind-scenes h3 { font-size: 1rem; margin-top: 0.4rem; }
+  /* "Behind the scenes" sidebar: warm paper, smaller headings than the page's own. */
+  [data-testid="stSidebar"] { background: var(--paper); border-right: 1px solid var(--line); }
+  [data-testid="stSidebar"] h3 { font-size: 1rem; margin-top: 0.4rem; }
   .replay-note { margin: 10px 0 0; padding: 6px 10px; border-radius: 8px; background: #f6ead6;
     color: var(--leather); font-size: 0.75rem; text-align: center; }
 
@@ -402,16 +412,14 @@ def render_customer_view() -> None:
                 new_conversation()
                 st.rerun()
 
-    # Behind the scenes, lined up under the chat: demo logins on the left, Dewey's state and steps on the right.
-    accounts, behind = st.columns([1, 1.3], gap="large")
-    with accounts:
+
+def render_behind_the_scenes() -> None:
+    """The closed-by-default sidebar: demo logins, what code has committed to, and every LLM/tool step."""
+    with st.sidebar:
+        st.markdown('<p class="eyebrow">Behind the scenes</p>', unsafe_allow_html=True)
         render_demo_accounts()
-    with behind.container(key="behind-scenes"):
-        # A toggle, not an expander: the trace already nests expanders, which Streamlit can't put in another.
-        if st.toggle("Behind the scenes", key="show_behind_scenes",
-                     help="Show what code has committed to and every LLM step and tool call."):
-            render_session_state(st.session_state.agent_session)
-            render_trace(st.session_state.agent_session)
+        render_session_state(st.session_state.agent_session)
+        render_trace(st.session_state.agent_session)
 
 
 VERDICT_MARK = {"pass": "✅", "fail": "❌", "invalid": "➖", "unknown": "❔"}
@@ -476,7 +484,7 @@ def render_scenario_panel() -> None:
     tools = [e for e in record["events"] if e["kind"] == "tool"]
     if tools:
         steps = " → ".join(f"{e['name']} {'✓' if e['ok'] else '✗'}" for e in tools)
-        st.caption(f"Tools: {steps}. The full trace is under the chat on the Customer tab.")
+        st.caption(f"Tools: {steps}. The full trace is in Behind the scenes (top left).")
     with st.expander(f"Deterministic checks · {passed}/{len(record['gates'])} passed"):
         for gate in record["gates"]:
             st.markdown(f"{'✅' if gate['ok'] else '❌'} `{gate['name']}` {gate['detail']}")
@@ -497,7 +505,8 @@ def render_developer_view() -> None:
 
 
 # ---------------- Page ----------------
-st.set_page_config(page_title="Dewey · Bookly Support", page_icon=DEWEY_AVATAR, layout="wide")
+st.set_page_config(page_title="Dewey · Bookly Support", page_icon=DEWEY_AVATAR, layout="wide",
+                   initial_sidebar_state="collapsed")  # "Behind the scenes" opens from a small top-left button
 st.markdown(CSS, unsafe_allow_html=True)
 # Faint line-art books tiled behind the page; embedded so the background needs no image requests.
 BOOK_PATTERN = quote((Path(__file__).parent / "assets" / "book-pattern.svg").read_text())
@@ -527,6 +536,7 @@ if mode == "Developer":
     render_developer_view()
 else:
     render_customer_view()
+render_behind_the_scenes()
 
 st.markdown(
     '<div class="site-footer"><span>Bookly · Dewey support</span><span>📖</span></div>',

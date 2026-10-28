@@ -69,10 +69,10 @@ def test_loading_a_saved_scenario_fills_the_chat_and_session():
     app.run(timeout=10)
     customer_page = " ".join(m.value for m in app.markdown)
     assert "Eval scenario S3" in customer_page
-    assert "Verified: **Maya**" not in customer_page  # the glass box stays hidden until switched on
-    app.toggle(key="show_behind_scenes").set_value(True).run(timeout=10)
-    assert "Verified: **Maya**" in " ".join(m.value for m in app.markdown)
-    assert any("prepare_return" in e.label for e in app.expander)
+    main_page = " ".join(m.value for m in app.main.markdown)
+    assert "Verified: **Maya**" not in main_page  # the glass box lives in the sidebar, not the page
+    assert "Verified: **Maya**" in " ".join(m.value for m in app.sidebar.markdown)
+    assert any("prepare_return" in e.label for e in app.sidebar.expander)
     next(b for b in app.button if b.label == "Reset conversation").click().run(timeout=10)
     assert app.session_state["loaded_scenario"] is None
 
@@ -93,7 +93,7 @@ def test_cancel_and_reset_do_not_submit():
     assert len(app.session_state["chat"]) == 1
 
 
-def test_trace_under_the_chat_shows_a_rejected_draft():
+def test_sidebar_trace_shows_a_rejected_draft():
     app = AppTest.from_file(APP_PATH).run(timeout=10)
     session = app.session_state["agent_session"]
     session.trace.append(TraceEvent(
@@ -102,8 +102,8 @@ def test_trace_under_the_chat_shows_a_rejected_draft():
                 "repair": "I can check once I find your order.", "repair_violations": []},
         ok=True, latency_ms=0,
     ))
-    app.toggle(key="show_behind_scenes").set_value(True).run(timeout=10)  # the trace under the chat
+    app.run(timeout=10)
     assert not app.exception
-    [check] = [e for e in app.expander if "Reply check" in e.label]
+    [check] = [e for e in app.sidebar.expander if "Reply check" in e.label]
     assert "rewritten" in check.label
     assert any("$150" in code.value for code in check.code)
