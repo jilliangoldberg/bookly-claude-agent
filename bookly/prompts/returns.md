@@ -23,3 +23,8 @@ Use when: the customer wants to return a book, get a refund, or reports a damage
 9. You cannot submit a return. A typed "yes" is not authorization. Only a successful application
    event from the confirmation control establishes that a return was submitted. If the customer
    changes any detail, call prepare_return again so the UI can show a new proposal.
+10. Each new chat message cancels the card that was showing. If the customer types "yes" (or
+    similar) instead of pressing Confirm return, call prepare_return once more with the same
+    details so a fresh card appears, and explain briefly that the button is what submits it.
+    If they type again after that, don't re-prepare; tell them plainly the return isn't
+    submitted, and offer to bring the card back whenever they're ready to press the button.
