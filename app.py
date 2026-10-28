@@ -6,11 +6,12 @@ import base64
 import json
 import random
 from pathlib import Path
+from urllib.parse import quote
 
 import anthropic
 import streamlit as st
 
-from bookly.actions import cancel_return, confirm_return
+from bookly.actions import cancel_reply, cancel_return, confirm_reply, confirm_return, record_action_reply
 from bookly.agent import handle_user_message
 from bookly.data import customers
 from bookly.models import SessionState
@@ -64,8 +65,7 @@ CSS = """
   .site-footer { display: flex; justify-content: space-between; margin-top: 2.5rem; }
 
   .st-key-chat-window { background: var(--paper); border-radius: 16px !important;
-    border-color: var(--line) !important; box-shadow: 0 10px 40px #6b553f12; }
-  .desk { display: flex; align-items: center; gap: 12px; padding-bottom: 12px;
+    border-color: var(--line) !important; box-shadow: 0 10px 40px #6b553f12; }  .desk { display: flex; align-items: center; gap: 12px; padding-bottom: 12px;
     border-bottom: 1px solid var(--line); }
   .desk img { width: 38px; height: 38px; border-radius: 10px; background: #f6ead6; }
   .desk h4 { font-size: 0.95rem; margin: 0; padding: 0; }
@@ -81,6 +81,8 @@ CSS = """
   .st-key-chat-log [data-testid="stVerticalBlockBorderWrapper"] { font-size: 0.88rem; }
   .st-key-chat-log [data-testid="stChatMessageAvatarUser"] { display: none; }
   [data-testid="stChatMessage"] p { margin-bottom: 0.4rem; }
+  [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+  [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] > :last-child { margin-bottom: 0; }
 
   .typing { display: flex; align-items: center; gap: 10px; min-height: 1.6rem; color: var(--muted); }
   .typing .dots { display: inline-flex; gap: 4px; }
@@ -152,36 +154,20 @@ def handle_input(text: str) -> None:
     st.session_state.chat.append(("assistant", reply))
 
 
-def record_action_reply(result: dict, reply: str) -> None:
+def show_action_reply(reply: str) -> None:
     """Record the deterministic result shown to the customer and future model turns."""
-    session = st.session_state.agent_session
-    session.messages.append({"role": "assistant", "content": reply})
+    record_action_reply(st.session_state.agent_session, reply)
     st.session_state.chat.append(("assistant", reply))
 
 
 def confirm_pending_return(token: str) -> None:
     """Submit the exact proposal selected by the application's Confirm button."""
-    result = confirm_return(st.session_state.agent_session, token)
-    if result["ok"]:
-        titles = ", ".join(result["item_titles"])
-        reply = (
-            f"Your return for **{titles}** has been submitted. "
-            f"Your RMA is **{result['rma_number']}**. {result['next_steps']}"
-        )
-    else:
-        reply = result["message"]
-    record_action_reply(result, reply)
+    show_action_reply(confirm_reply(confirm_return(st.session_state.agent_session, token)))
 
 
 def cancel_pending_return(token: str) -> None:
     """Cancel the exact proposal selected by the application's Cancel button."""
-    result = cancel_return(st.session_state.agent_session, token)
-    reply = (
-        "I've cancelled that return proposal. No return was submitted."
-        if result["ok"]
-        else result["message"]
-    )
-    record_action_reply(result, reply)
+    show_action_reply(cancel_reply(cancel_return(st.session_state.agent_session, token)))
 
 
 def render_confirmation(session: SessionState) -> None:
@@ -353,6 +339,13 @@ def render_developer_view() -> None:
 # ---------------- Page ----------------
 st.set_page_config(page_title="Dewey · Bookly Support", page_icon=DEWEY_AVATAR, layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
+# Faint line-art books tiled behind the page; embedded so the background needs no image requests.
+BOOK_PATTERN = quote((Path(__file__).parent / "assets" / "book-pattern.svg").read_text())
+st.markdown(
+    f'<style>.stApp {{ background-image: url("data:image/svg+xml,{BOOK_PATTERN}"); '
+    "background-size: 560px 440px; }</style>",
+    unsafe_allow_html=True,
+)
 DEWEY_DATA_URI = "data:image/png;base64," + base64.b64encode(Path(DEWEY_AVATAR).read_bytes()).decode()
 if "agent_session" not in st.session_state:
     new_conversation()

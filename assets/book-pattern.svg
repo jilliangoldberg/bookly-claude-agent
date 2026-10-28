@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="440" viewBox="0 0 560 440">
+  <!-- Quiet line art keeps the bookstore setting in the background. -->
+  <g fill="none" stroke="#c5b99d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".42">
+    <g transform="translate(48 48) rotate(-12 42 30)">
+      <path d="M42 12C29 3 15 2 2 5v49c14-3 27-1 40 8 13-9 27-11 40-8V5C68 2 55 3 42 12Z"/>
+      <path d="M42 12v50M10 16c9-1 17 1 24 5m-24 5c9-1 17 1 24 5m-24 5c9-1 17 1 24 5m16-20c8-4 15-6 24-5m-24 15c8-4 15-6 24-5m-24 15c8-4 15-6 24-5"/>
+    </g>
+    <g transform="translate(378 104) rotate(9 32 38)">
+      <rect x="0" y="6" width="16" height="72" rx="3"/>
+      <path d="M4 17h8M4 66h8M8 29v23"/>
+      <rect x="20" y="0" width="22" height="78" rx="3"/>
+      <path d="M25 10h12M25 67h12M31 24v27"/>
+      <path d="m47 12 14-3 15 65-14 3Zm3 9 14-3m-3 49 13-3"/>
+      <path d="M-5 83h86"/>
+    </g>
+    <g transform="translate(187 300) rotate(-6 48 25)">
+      <path d="M8 3h80v17H8c-10 0-10-17 0-17Zm0 7h72M0 24h79c10 0 10 19 0 19H0V24Zm8 9h69M15 47h76v16H15c-10 0-10-16 0-16Zm1 8h67"/>
+      <path d="M57 3v24l6-4 6 4V3"/>
+    </g>
+  </g>
+</svg>
