@@ -118,6 +118,27 @@ def cancel_return(session: SessionState, token: str) -> dict:
     )
 
 
+def confirm_reply(result: dict) -> str:
+    """The customer-facing message after Confirm, built only from the trusted action result."""
+    if not result["ok"]:
+        return result["message"]
+    titles = ", ".join(result["item_titles"])
+    return (
+        f"Your return for **{titles}** has been submitted. "
+        f"Your RMA is **{result['rma_number']}**. {result['next_steps']}"
+    )
+
+
+def cancel_reply(result: dict) -> str:
+    """The customer-facing message after Cancel."""
+    return "I've cancelled that return proposal. No return was submitted." if result["ok"] else result["message"]
+
+
+def record_action_reply(session: SessionState, reply: str) -> None:
+    """Add a code-written action reply to history, so the next model turn sees what the customer saw."""
+    session.messages.append({"role": "assistant", "content": reply})
+
+
 def invalidate_pending_action(session: SessionState, reason: str = "new_message") -> None:
     """Expire an old proposal when chat moves on; no customer-facing action is recorded."""
     pending = session.pending_action

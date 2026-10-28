@@ -136,7 +136,7 @@ Found while running the demo scenarios against the live model:
 python -m pytest
 ```
 
-60 tests, no API key needed:
+108 tests, no API key needed:
 - [`test_policy.py`](tests/test_policy.py): return-window edges (day 30 vs 31), ebook rules, and refund math.
 - [`test_tools.py`](tests/test_tools.py): the guardrails.
   - Wrong email and wrong ZIP look identical.
@@ -155,12 +155,29 @@ python -m pytest
 - [`test_app.py`](tests/test_app.py): the real Streamlit confirmation card.
   - Canonical book, order, and amount rendering.
   - Confirm creates the RMA; Cancel and Reset do not.
+- [`test_evals.py`](tests/test_evals.py): the eval harness itself. Every scenario's reference run passes its graders, an empty run fails them, and each grader catches the failure it's for.
+
+## Evals
+
+Unit tests check code paths. The evals check whole conversations against the live model:
+
+```bash
+python -m evals list
+python -m evals run --scenario S3 --trials 1 --no-judge   # quick wiring check
+python -m evals run                                       # all scenarios, 5 trials each, with the judge
+```
+
+- **A simulated customer** (Sonnet 5.5) plays each scenario's persona and goal. It sees only what a real customer sees, and it can press the Confirm return and Cancel buttons.
+- **Deterministic gates** check the end state (was the right return submitted, or none? was a ticket opened?), required and forbidden tools, other customers' data, amounts no tool returned, and claims of actions that never happened. Any gate failure fails the trial.
+- **A judge on a different model** (Opus 5.5) grades grounding, clarification, authorization, resolution, tone, and whether the simulated customer stayed in character. A trial where the customer broke script is marked invalid, not failed.
+- **The scorecard** reports pass@1 and pass^k (all k trials pass) per scenario, plus cost. Each trial is also saved as a readable transcript under `evals/results/`.
+- **Calibration:** `python -m evals calibrate` compares the judge with human labels in `evals/labels.jsonl`.
+
+Evals call the API and cost money; they never run in pytest. A gates-only trial costs about $0.04.
 
 ## Limitations and next steps
 
-1. **Eval harness first.** A simulated customer (an LLM with a goal, facts, and a personality) plays scenarios against Dewey. A judge on a different model grades each transcript.
-   - Deterministic gates override the judge: required or forbidden tools, and amounts that no tool returned.
-   - Run N trials per scenario to get pass rates, not anecdotes.
+1. **Finish the eval baseline.** Run the full suite with the judge, calibrate the judge against human labels, then record pass@1 and pass^5 for every scenario.
 2. **Check replies before they're sent.** Every amount, date, order id, and RMA in a draft reply must appear in this session's tool results. A failing draft gets one constrained rewrite, then a safe fallback.
 3. **Real integrations and authentication.** Replace the mock data with order-system and CRM APIs, and email + ZIP with a signed-in session. Production traces would be redacted; this demo shows everything on purpose.
 4. **Scaling to more intents.** Load procedures and tools only when their topic comes up, instead of sending all of them on every call.

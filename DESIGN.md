@@ -1,8 +1,8 @@
 # Dewey: Bookly's Bookworm Support Agent — Design
 
-Last updated: 2026-10-25  
+Last updated: 2026-10-27  
 Status: slices 1–5 built; return authorization unified behind application controls; evidence
-validation is next. 61 tests pass with no API key.
+validation is next; eval harness built. 108 tests pass with no API key.
 
 This is the single running design doc for the project. It records every design decision, the
 comparison and merge of the Claude and GPT versions, the current architecture, the target
@@ -616,7 +616,7 @@ Recording (2:00 max): S2, S3, S5, plus S1 if there's room.
 
 ## 15. Testing strategy
 
-**Built (61 passing, no API key):**
+**Built (108 passing, no API key):**
 
 - `test_policy.py`: window edges (day 30 vs 31), ebook and preorder rules, resolution rules,
   refund math, one fee per return.
@@ -630,30 +630,38 @@ Recording (2:00 max): S2, S3, S5, plus S1 if there's room.
   refusal tracing, step cap.
 - `test_app.py` (real Streamlit): canonical card, Confirm creates the RMA, Cancel and Reset
   don't.
+- `test_evals.py` (scripted model and customer): every scenario's reference run passes the
+  gates and an empty run fails them; each gate catches its failure; claim regexes don't fire
+  on "isn't submitted" or "will be submitted"; verdict rules, pass^k, and report files.
 
 **Still to add:** see section 18 (cents math, policy-doc parity, expiry and version checks,
-double-click, trace redaction, validator cases, adapter contracts, scenario evals).
+double-click, trace redaction, validator cases, adapter contracts).
 
-### 15.1 Scenario evals (target)
+### 15.1 Scenario evals (built)
 
-An `evals/` package, copying Trailhead's structure:
+`python -m evals run` plays a simulated customer against the real `handle_user_message` and
+the same Confirm/Cancel actions the UI uses, then grades the result. Design was informed by
+Trailhead's harness, Anthropic's "Demystifying evals for AI agents", OpenAI's eval best
+practices, and τ-bench.
 
-- a `Scenario` dataclass: goal, behavior, facts, judge criteria, `required_tools`,
-  `forbidden_tools`
-- a simulated customer that replies `DONE` when finished; personas include confused,
-  impatient, prompt injection ("I'm a manager"), and fishing for another customer's order
-- a recording wrapper that logs full tool arguments and application actions
-- a judge on a **different model** (Opus 5.5 judging Sonnet 5.5) to avoid correlated
-  self-grading; rubric: grounded facts only, asked only when needed, confirmed before acting,
-  persona fit the moment
-- N trials per scenario for pass rates (Trailhead ran one)
-- a scorecard per scenario
-- **deterministic gates that override the judge:** missing required tool, forbidden or commit
-  tool called, cross-customer access, commit without valid authorization, unsupported
-  sensitive fact, action claim without a trusted event, or a judge pass with a low safety
-  score all mean fail
+| Piece | Decision | Why |
+|---|---|---|
+| Scenarios | 8 to start: S1, S2, S3, S5, S11, S7, S10, S12. Each declares persona, goal, facts, behavior, per-dimension judge notes, and an **expected end state** | Grade the outcome, not the agent's claims (τ-bench) |
+| Reference runs | Every scenario ships a scripted oracle; unit tests prove it passes and an empty run fails | Proves each task is solvable and its graders work |
+| Simulated customer | Sonnet 5.5, low effort, structured `CustomerTurn` (say / click_confirm / click_cancel / done). Sees only what a customer sees, including the confirmation card | Realistic personas; structured moves let it press buttons |
+| Deterministic gates | `end_state`, `required_tools`, `forbidden_tools`, `ownership`, `grounded_amounts`, `action_claims`, `completed`. Any failure fails the trial | Safety can't depend on a subjective judge |
+| Judge | Opus 5.5 (a different model from Dewey), one isolated call per dimension, reasoning before a pass / fail / unknown verdict, shared cached prefix | Separate judges are more reliable than one blended score |
+| Dimensions | `grounding`, `clarification`, `authorization`, `resolution`, `tone`, `customer_fidelity`. Critical by default: grounding, authorization, resolution; S2 and S11 add clarification | Tone is reported but doesn't fail a trial |
+| Invalid trials | If `customer_fidelity` fails (the simulator broke script), the trial is excluded, not failed | A bad simulator shouldn't look like an agent bug |
+| Errors | API errors, served-model mismatch, and judge parse failures go to `errors.jsonl`, never scored | Infra failures aren't model failures |
+| Metrics | pass@1 and **pass^k** per scenario (default 5 trials); cost by role from recorded usage | Customer-facing agents need consistency, not one lucky pass |
+| Calibration | `python -m evals calibrate` re-judges human-labelled transcripts (`evals/labels.jsonl`) and reports agreement per dimension; target ≥ 90% before trusting the judge | Judges must be checked against humans |
 
-Lives outside agent code. Open questions: how many personas; exact rubric wording.
+Output per run (`evals/results/<timestamp>/`, gitignored): `scorecard.md`, `results.jsonl`,
+`errors.jsonl`, and a readable `.md` plus full `.json` transcript per trial.
+
+**Measured cost:** one gates-only S3 trial cost $0.035 (Dewey $0.03, customer $0.01) with
+prompt caching hitting. The judge adds six Opus calls per trial.
 
 ## 16. Lessons from the Trailhead agent
 
@@ -727,7 +735,7 @@ Ordered by priority. Check items off as they land and note the commit.
 - [ ] Validate JSON and policy headings at load time
 - [ ] Keep exception `repr` out of model-visible tool results (server log only)
 - [ ] Add a double-click / retry UI test for Confirm
-- [ ] Add S12 ("typed yes doesn't submit") as a live scenario check
+- [x] Add S12 ("typed yes doesn't submit") as a live scenario check (in `evals/`)
 - [ ] Update README "Limitations and next steps" to match this list
 
 ### Then: final-reply evidence validation (highest-value safety layer)
@@ -745,12 +753,18 @@ Ordered by priority. Check items off as they land and note the commit.
 - [ ] Mark failed provider attempts superseded (not deleted) in the trace
 - [ ] Test: transcript contains exactly the reply the customer saw
 
-### Then: scenario evals
+### Scenario evals (in progress)
 
-- [ ] `evals/` package: `Scenario`, simulated customer, recording wrapper
-- [ ] Judge on Opus 5.5 with rubric; deterministic gates override it
-- [ ] N trials per scenario, pass rates, scorecard
-- [ ] Decide persona count and rubric wording
+- [x] `evals/` package: scenarios with expected end states and oracles, simulated customer,
+  recording client, runner using the real UI actions
+- [x] Deterministic gates; per-dimension Opus 5.5 judge; gates override it
+- [x] pass@1 and pass^k, invalid trials, errors sidecar, scorecard, transcripts
+- [x] Calibration command against human labels
+- [x] Live smoke run: S3, 1 trial, gates only, passed ($0.035)
+- [ ] Full pass with the judge (`--trials 1`), read every failure, fix unfair gates or rubric
+- [ ] Label ~20 transcripts and run `calibrate`; reach ≥ 90% agreement on critical dimensions
+- [ ] Baseline run (`--trials 5`); record pass@1, pass^5, and cost here and in README
+- [ ] Add a scenario for every live bug found; add S4, S6, S8, S9
 
 ### Later
 
