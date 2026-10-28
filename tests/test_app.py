@@ -69,7 +69,9 @@ def test_loading_a_saved_scenario_fills_the_chat_and_session():
     app.run(timeout=10)
     customer_page = " ".join(m.value for m in app.markdown)
     assert "Eval scenario S3" in customer_page
-    assert "Verified: **Maya**" in customer_page  # the glass box sits under the chat on this tab
+    assert "Verified: **Maya**" not in customer_page  # the glass box stays hidden until switched on
+    app.toggle(key="show_behind_scenes").set_value(True).run(timeout=10)
+    assert "Verified: **Maya**" in " ".join(m.value for m in app.markdown)
     assert any("prepare_return" in e.label for e in app.expander)
     next(b for b in app.button if b.label == "Reset conversation").click().run(timeout=10)
     assert app.session_state["loaded_scenario"] is None
@@ -100,7 +102,7 @@ def test_trace_under_the_chat_shows_a_rejected_draft():
                 "repair": "I can check once I find your order.", "repair_violations": []},
         ok=True, latency_ms=0,
     ))
-    app.run(timeout=10)  # the Customer tab, where the trace sits under the chat
+    app.toggle(key="show_behind_scenes").set_value(True).run(timeout=10)  # the trace under the chat
     assert not app.exception
     [check] = [e for e in app.expander if "Reply check" in e.label]
     assert "rewritten" in check.label

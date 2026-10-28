@@ -30,7 +30,7 @@ Demo accounts are also listed in the app's Developer view.
 | Priya | priya.raman@example.com | 60614 | "Where's my order?" · "My Cartographer's Daughter arrived with a torn cover." |
 | anyone | none | none | "Do you ship to Canada?" · "Can I sell you my used books?" |
 
-The Customer view is a small chat window with a **glass box** right under it ("Behind the scenes"). It shows:
+The Customer view is a small chat window with a **glass box** right under it: switch on **Behind the scenes** to see it. It shows:
 - what code has committed to (verified customer, quotes, RMAs, tickets)
 - every LLM step and tool call, with full inputs and outputs
 

@@ -407,9 +407,11 @@ def render_customer_view() -> None:
     with accounts:
         render_demo_accounts()
     with behind.container(key="behind-scenes"):
-        st.markdown('<p class="eyebrow">Behind the scenes</p>', unsafe_allow_html=True)
-        render_session_state(st.session_state.agent_session)
-        render_trace(st.session_state.agent_session)
+        # A toggle, not an expander: the trace already nests expanders, which Streamlit can't put in another.
+        if st.toggle("Behind the scenes", key="show_behind_scenes",
+                     help="Show what code has committed to and every LLM step and tool call."):
+            render_session_state(st.session_state.agent_session)
+            render_trace(st.session_state.agent_session)
 
 
 VERDICT_MARK = {"pass": "✅", "fail": "❌", "invalid": "➖", "unknown": "❔"}
