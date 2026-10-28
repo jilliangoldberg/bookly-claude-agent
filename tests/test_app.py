@@ -91,7 +91,7 @@ def test_cancel_and_reset_do_not_submit():
     assert len(app.session_state["chat"]) == 1
 
 
-def test_developer_trace_shows_a_rejected_draft():
+def test_trace_under_the_chat_shows_a_rejected_draft():
     app = AppTest.from_file(APP_PATH).run(timeout=10)
     session = app.session_state["agent_session"]
     session.trace.append(TraceEvent(
@@ -100,8 +100,7 @@ def test_developer_trace_shows_a_rejected_draft():
                 "repair": "I can check once I find your order.", "repair_violations": []},
         ok=True, latency_ms=0,
     ))
-    app.session_state["view_mode"] = "Developer"
-    app.run(timeout=10)
+    app.run(timeout=10)  # the Customer tab, where the trace sits under the chat
     assert not app.exception
     [check] = [e for e in app.expander if "Reply check" in e.label]
     assert "rewritten" in check.label
