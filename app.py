@@ -45,6 +45,7 @@ TOOL_STATUS = {
     "prepare_return": "Working out your refund…",
     "search_policies": "Checking store policy…",
     "escalate_to_human": "Passing this to a teammate…",
+    "check_reply": "Double-checking the details…",  # the reply check is rewriting a draft
 }
 SLOW_TURN_LINES = ["Flipping through the pages…", "Still reading…", "Checking the shelves…"]
 
@@ -308,6 +309,17 @@ def render_trace(session: SessionState) -> None:
                     f"🧠 {o['stop_reason']} · {o['input_tokens']}→{o['output_tokens']} tokens "
                     f"· cached {o['cache_read_tokens']} · {e.latency_ms} ms"
                 )
+            elif e.kind == "validation":
+                o = e.output
+                badge = "rewritten" if o["outcome"] == "repaired" else "safe fallback sent"
+                with st.expander(f"🛡️ Reply check · {len(o['violations'])} unsupported · {badge}"):
+                    st.markdown("Unsupported in the draft")
+                    st.code("\n".join(o["violations"]), language="text")
+                    st.markdown("Rejected draft (never shown to the customer)")
+                    st.code(e.input["draft"], language="text")
+                    if o["repair_violations"]:
+                        st.markdown("Still unsupported after the rewrite")
+                        st.code("\n".join(o["repair_violations"]), language="text")
             else:
                 badge = "✅" if e.ok else f"⚠️ {e.output.get('error_code')}"
                 with st.expander(f"🔧 {e.name} {badge} · {e.latency_ms} ms"):

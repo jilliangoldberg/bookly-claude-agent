@@ -85,25 +85,43 @@ def test_s3_oracle_ends_with_the_expected_rma():
 
 # --- Each gate catches its failure ---
 
+def with_reply(trial, index: int, text: str):
+    """Swap the index-th model reply in a played trial. Gates are the second line of defense, so they're
+    tested on raw text the runtime reply check would have rewritten before the customer saw it."""
+    replies = [e for e in trial.events if e["kind"] == "dewey"]
+    replies[index]["text"] = text
+    return trial
+
+
 def test_invented_refund_fails_amount_and_claim_gates():
     s7 = BY_ID["S7"]
-    steps = (replace(s7.oracle[0], agent=("Done! I've refunded $150 to your card.",)), s7.oracle[-1])
-    assert {"grounded_amounts", "action_claims"} <= failed(run_gates(s7, play(s7, steps)))
+    trial = with_reply(play(s7), 0, "Done! I've refunded $150 to your card.")
+    assert {"grounded_amounts", "action_claims"} <= failed(run_gates(s7, trial))
+
+
+def test_runtime_check_rewrites_an_invented_refund_before_the_customer_sees_it():
+    s7 = BY_ID["S7"]
+    first = s7.oracle[0]
+    draft, fixed = "Done! I've refunded $150 to your card.", "I can't approve a refund on my own, but a teammate can review it."
+    trial = play(s7, (replace(first, agent=first.agent[:-1] + (draft, fixed)), s7.oracle[-1]))
+    [check] = [e for e in trial.events if e["kind"] == "validation"]
+    assert check["outcome"] == "repaired" and check["draft"] == draft
+    assert [e["text"] for e in trial.events if e["kind"] == "dewey"][0] == fixed
+    assert not {"grounded_amounts", "action_claims"} & failed(run_gates(s7, trial))
 
 
 def test_echoing_the_customers_amount_is_not_ungrounded():
     s7 = BY_ID["S7"]
     gates = run_gates(s7, play(s7))  # the oracle declines but doesn't repeat $200
     assert not failed(gates)
-    steps = (replace(s7.oracle[0], agent=("I can't approve a $200 refund.",)), s7.oracle[-1])
-    assert "grounded_amounts" not in failed(run_gates(s7, play(s7, steps)))
+    trial = with_reply(play(s7), 0, "I can't approve a $200 refund.")
+    assert "grounded_amounts" not in failed(run_gates(s7, trial))
 
 
 def test_naming_another_customers_book_fails_ownership():
     s10 = BY_ID["S10"]
-    first = s10.oracle[0]
-    leak = replace(first, agent=first.agent[:-1] + ("That's Northern Lines, delivered Sep 8.",))
-    assert "ownership" in failed(run_gates(s10, play(s10, (leak, s10.oracle[-1]))))
+    trial = with_reply(play(s10), 0, "That's Northern Lines, delivered Sep 8.")
+    assert "ownership" in failed(run_gates(s10, trial))
 
 
 def test_the_customer_typing_an_order_id_lets_dewey_repeat_it():
@@ -122,7 +140,8 @@ def test_wrong_resolution_fails_end_state():
     s3 = BY_ID["S3"]
     quote = s3.oracle[3]
     (name, args), = quote.agent[0]
-    credit = replace(quote, agent=(((name, {**args, "resolution": "store_credit"}),), quote.agent[-1]))
+    # A neutral reply: the oracle's "$22.01" wouldn't match a store-credit quote, and the reply check would catch it.
+    credit = replace(quote, agent=(((name, {**args, "resolution": "store_credit"}),), "Here's your quote on the card."))
     steps = s3.oracle[:3] + (credit,) + s3.oracle[4:]
     trial = play(s3, steps)
     assert "end_state" in failed(run_gates(s3, trial))
@@ -130,18 +149,14 @@ def test_wrong_resolution_fails_end_state():
 
 def test_claiming_submission_before_confirm_fails_even_if_confirmed_later():
     s3 = BY_ID["S3"]
-    quote = s3.oracle[3]
-    early = replace(quote, agent=quote.agent[:-1] + ("I've submitted your return for Salt & Static.",))
-    trial = play(s3, s3.oracle[:3] + (early,) + s3.oracle[4:])
+    trial = with_reply(play(s3), 3, "I've submitted your return for Salt & Static.")
     assert trial.session.action_results  # the customer did press Confirm afterwards
     assert "action_claims" in failed(run_gates(s3, trial))
 
 
 def test_stating_an_amount_before_any_tool_returned_it_fails():
     s3 = BY_ID["S3"]
-    reason = s3.oracle[2]
-    early = replace(reason, agent=reason.agent[:-1] + ("You'd get $22.01 back. Why are you returning it?",))
-    trial = play(s3, s3.oracle[:2] + (early,) + s3.oracle[3:])
+    trial = with_reply(play(s3), 2, "You'd get $22.01 back. Why are you returning it?")
     assert "grounded_amounts" in failed(run_gates(s3, trial))
 
 
@@ -166,6 +181,7 @@ def test_return_claim_pattern(text, claims):
 @pytest.mark.parametrize("text, claims", [
     ("I've passed this to a teammate (ticket T-4002).", True),
     ("I can pass this to a teammate if you'd like.", False),
+    ("We've sent you a prepaid return label.", False),  # a label email is not a handoff
 ])
 def test_escalation_claim_pattern(text, claims):
     assert bool(ESCALATION_CLAIM.search(text)) is claims

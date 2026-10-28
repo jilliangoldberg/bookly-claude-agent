@@ -13,11 +13,14 @@ DIM, RESET = "\033[2m", "\033[0m"  # terminal colors, so tool calls fade behind 
 
 
 def print_new_tool_calls(session: SessionState, already_shown: int) -> None:
-    """Print, dimmed, each tool call the agent made since the last reply."""
+    """Print, dimmed, each tool call and reply check the agent made since the last reply."""
     for event in session.trace[already_shown:]:
         if event.kind == "tool":
             status = "ok" if event.ok else event.output.get("error_code")
             print(f"{DIM}  [tool] {event.name}({json.dumps(event.input)}) -> {status}{RESET}")
+        elif event.kind == "validation":
+            found = "; ".join(event.output["violations"])
+            print(f"{DIM}  [check] {found} -> {event.output['outcome']}{RESET}")
 
 
 def main() -> None:

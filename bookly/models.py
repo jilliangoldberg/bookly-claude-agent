@@ -24,8 +24,8 @@ class TraceEvent:
     """One step the agent took, shown in the UI's 'glass box' trace."""
 
     turn: int  # which customer message this step belongs to
-    kind: Literal["llm", "tool"]
-    name: str  # model name for LLM steps, tool name for tool calls
+    kind: Literal["llm", "tool", "validation"]
+    name: str  # model name for LLM steps, tool name for tool calls, "check_reply" for the reply check
     input: dict
     output: dict
     ok: bool

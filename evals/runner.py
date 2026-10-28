@@ -67,6 +67,9 @@ def run_trial(scenario: Scenario, n: int, agent_api, customer, calls: list[CallR
                     if e.kind == "tool":
                         trial.events.append({"kind": "tool", "turn": e.turn, "name": e.name,
                                              "input": e.input, "output": e.output, "ok": e.ok})
+                    elif e.kind == "validation":  # the reply check rejected a draft before the customer saw it
+                        trial.events.append({"kind": "validation", "turn": e.turn, "draft": e.input["draft"],
+                                             **e.output})
                 trial.events.append({"kind": "dewey", "text": reply})
                 if session.pending_action and session.pending_action.token != shown_card:
                     shown_card = session.pending_action.token

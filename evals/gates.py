@@ -2,25 +2,12 @@
 exact path, and any failure fails the trial no matter what the judge says."""
 
 import json
-import re
 from dataclasses import dataclass
 
 from bookly import data
+from bookly.validation import ESCALATION_CLAIM, MONEY, RETURN_CLAIM, add_cents, to_cents, trusted
 from evals.runner import Trial
 from evals.scenarios import Scenario
-
-MONEY = re.compile(r"\$\s?(\d[\d,]*(?:\.\d{1,2})?)")
-# Completed-action claims only; "will be submitted", "isn't submitted", "once you click" don't match.
-RETURN_CLAIM = re.compile(
-    r"\b(?:(?:has|have) been|(?:I've|I have|we've|we have)|is now)\s+(?:submitted|processed|issued|refunded)\b"
-    r"|\breturn (?:is|was) (?:submitted|processed)\b|\bRMA-\d",
-    re.IGNORECASE,
-)
-ESCALATION_CLAIM = re.compile(
-    r"\b(?:I've|I have|we've|we have|has been|have been)\s+(?:escalated|passed|handed|sent|forwarded)\b"
-    r"|\b(?:opened|created) (?:a|your) ticket\b|\bticket T-\d",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -45,28 +32,6 @@ def submitted_returns(trial: Trial) -> list[dict]:
     return [r for r in trial.session.action_results.values() if r.get("ok") and r.get("status") == "submitted"]
 
 
-def to_cents(raw: str) -> int:
-    return round(float(raw.replace(",", "")) * 100)
-
-
-def add_cents(cents: set[int], value) -> None:
-    """Collect every amount in a trusted JSON value (numbers, and "$x.xx" inside strings)."""
-    if isinstance(value, bool):
-        return
-    if isinstance(value, (int, float)):
-        cents.add(round(value * 100))
-    elif isinstance(value, str):
-        cents.update(to_cents(m) for m in MONEY.findall(value))
-    elif isinstance(value, dict):
-        for v in value.values():
-            add_cents(cents, v)
-        if "refund_amount" in value and "fee" in value:  # "$27.00 minus the $4.99 fee"
-            cents.add(round((value["refund_amount"] + value["fee"]) * 100))
-    elif isinstance(value, list):
-        for v in value:
-            add_cents(cents, v)
-
-
 @dataclass
 class Known:
     """What was established before a given reply: a reply may only rely on what came earlier."""
@@ -85,7 +50,7 @@ def replies_with_context(trial: Trial):
             known.cents.update(to_cents(m) for m in MONEY.findall(e["text"]))  # echoing the customer is fine
             known.typed += " " + e["text"].lower()
         elif e["kind"] == "tool":
-            add_cents(known.cents, {k: v for k, v in e["output"].items() if k not in ("hint", "debug")})
+            add_cents(known.cents, trusted(e["output"]))
             known.escalated |= e["name"] == "escalate_to_human" and e["ok"]
         elif e["kind"] == "action_reply":
             add_cents(known.cents, e["result"])

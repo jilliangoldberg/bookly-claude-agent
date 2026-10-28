@@ -1,8 +1,9 @@
 # Dewey: Bookly's Bookworm Support Agent — Design
 
 Last updated: 2026-10-27  
-Status: slices 1–5 built; return authorization unified behind application controls; evidence
-validation is next; eval harness built. 108 tests pass with no API key.
+Status: slices 1–5 built; return authorization unified behind application controls; eval
+harness built; replies checked against trusted data before they're sent. 158 tests pass with no
+API key.
 
 This is the single running design doc for the project. It records every design decision, the
 comparison and merge of the Claude and GPT versions, the current architecture, the target
@@ -101,7 +102,7 @@ authorization boundary, and both versions' gaps are closed by a new evidence val
   delivery (section 11).
 
 Status: the authorization merge landed in commit `23f2dcd` ("Unify return authorization
-behind application controls"). The validator is not built yet.
+behind application controls"). The validator is built (`bookly/validation.py`, section 11).
 
 ## 3. Goals and non-goals
 
@@ -149,7 +150,7 @@ Each kind of decision has one owner:
 | Proposed action | `prepare_return` | Stored as an immutable `PendingAction` |
 | Customer authorization | Application UI | Explicit control bound to one pending-action token |
 | Consequential write | `bookly/actions/` | Reauthorizes, revalidates, executes idempotently |
-| Final-reply facts | Evidence validator (planned) | Sensitive claims must match trusted evidence |
+| Final-reply facts | Reply check (`bookly/validation.py`) | Amounts, dates, IDs, and action claims must match trusted evidence |
 | Failure and handoff | Agent loop | Partial output is never shown; recovery is deterministic |
 
 ### 4.2 The model never supplies trusted identity
@@ -462,8 +463,8 @@ Rules (✅ = built):
 7. ✅ Retries can't create a duplicate return.
 8. ✅ Cancel and new-message invalidation make the token unusable.
 9. ✅ A successful action result is passed to the model as trusted context on the next turn.
-10. ⬜ Only a trusted event may establish that a return was submitted in Dewey's prose
-    (enforced by the evidence validator).
+10. ✅ Only a trusted event may establish that a return was submitted in Dewey's prose
+    (enforced by the reply check, section 11).
 
 ## 10. Conversation lifecycle
 
@@ -474,52 +475,69 @@ As built, per customer message:
 3. Call Claude with the cached system prompt and tool schemas.
 4. On `tool_use`: fire `on_step`, dispatch, trace, return all results in one message.
 5. Repeat until `end_turn`, capped at 8 steps.
-6. Return the text.
+6. Check the draft against trusted session data (section 11). If it's clean, append it and
+   return it. Otherwise, make one rewrite with tools off; if that fails too, send a fixed safe
+   reply. History stores only the text the customer saw.
 
 `max_tokens`, refusal, an empty answer, an unexpected stop reason, or the step cap never shows
 partial output: the customer gets a plain apology and a handoff ticket, and the reason is
-traced. On an API error, history rolls back to the checkpoint; real side effects stay.
+traced. On an API error (including during a rewrite), history rolls back to the checkpoint;
+real side effects stay.
 
-Target adds, between steps 5 and 6: validate the draft against evidence (section 11), repair
-once if needed, else commit a safe fallback. The transcript stores only what the customer saw.
-Failed attempts stay as redacted, superseded diagnostics.
+Target adds: failed attempts kept as redacted, superseded diagnostics (section 7.3).
 
 ## 11. Final-reply evidence validation
 
-**Highest-value missing safety layer.** Python protects actions, but the model can still
-misstate a date, amount, identifier, or outcome. Neither the Claude nor the GPT version
-checks this.
+**Built** (`bookly/validation.py`, wired in by `deliver()` in `agent.py`). Python already
+protected actions, but the model could still misstate a date, amount, identifier, or outcome.
+Neither the Claude nor the GPT version checked this.
 
 ### 11.1 Deterministic checks first
 
-Extract from the draft:
+`collect_evidence(session)` gathers facts from trusted sources only: every tool output this
+session (minus `hint` and `debug`, which can echo model input), Confirm/Cancel results, the
+ticket, verification, and today's date. **Customer text is never evidence**: if a customer
+guesses "is my refund $30?", Dewey can't confirm $30 without a tool result.
 
-- currency amounts
-- dates and delivery estimates
-- order, item, quote, tracking, RMA, and ticket IDs
-- status and eligibility claims
-- action claims: "submitted," "refunded," "cancelled," "emailed," "escalated"
+`check_reply(draft, evidence)` returns one violation per unsupported span:
 
-Every fact must match this turn's evidence or an active trusted session fact. Action claims
-need a matching successful tool or application event:
+| Code | Flagged when |
+|---|---|
+| `UNSUPPORTED_AMOUNT` | a `$` amount isn't a trusted amount in cents (prices, refund, fee, a quote's subtotal, or `$x.xx` in returned policy text) |
+| `UNSUPPORTED_DATE` | "Oct 27", "October 27, 2026", "10/27" or ISO matches no trusted date on month and day (and year, when written) |
+| `UNSUPPORTED_ID` | an order, item, quote, ticket, RMA or tracking ID appears in no trusted output |
+| `UNSUPPORTED_ACTION` | a completed claim without its event: submitted/refunded/emailed → a successful Confirm; cancelled → a successful Cancel; escalated or "passed this to a teammate" → a ticket; "verified your account" → verification |
 
-- "I submitted your return" needs a successful `confirm_return` result.
-- "I escalated this" needs a ticket.
-- "Your refund is $22.01" needs that exact amount in the quote or action result.
-- "It will arrive Oct 28" needs that date in an order lookup's estimated-delivery field.
+Claims only match completed forms. "Will be submitted", "once you click Confirm", "hasn't
+been submitted", "I can pass this to a teammate" and "we've sent you a label" don't count.
 
-Normalize harmless differences (`$22.01` vs `2201` cents; `2026-10-28` vs "Oct 28").
+The eval gates (`grounded_amounts`, `action_claims`) import the same patterns, so the runtime
+check and the graders can't drift apart. The gates stay deliberately looser on one point:
+they let Dewey echo an amount the customer typed, because they grade harm rather than enforce.
+
+**Not covered yet:** status and eligibility wording ("it's been delivered"), and whether a
+date came from the right field (an ETA vs a delivered date).
 
 ### 11.2 Repair and fallback
 
-1. Record violation codes in the trace.
-2. One repair call: mid-conversation `system` message, `tool_choice: {"type": "none"}`, only
-   the draft, violations, and needed evidence.
-3. Validate the repair.
-4. If it still fails, send a fixed response that repeats no untrusted facts and offers a retry
-   or a human.
+1. Record a `validation` trace event: the violations, the rejected draft, and the outcome.
+2. One repair call: the same system prompt and tools (so the cache prefix still hits), plus a
+   mid-conversation `system` message with the draft and violations, and
+   `tool_choice: {"type": "none"}`. The draft was never appended, so the system message
+   follows a user message as the API requires.
+3. Check the repair against the same evidence.
+4. If it passes, append it as plain text (its thinking blocks belong to a prefix that included
+   the instruction, so replaying them would be a history edit). If it fails, is empty, or is
+   cut off, send `SAFE_FALLBACK`: no facts, an apology, and an offer to retry or get a
+   teammate.
 
-Rejected drafts are diagnostics, never history.
+Rejected drafts are diagnostics, never history. Code-written replies (handoffs and the
+Confirm/Cancel messages) aren't checked; they're built from trusted results. The Developer
+trace shows a 🛡️ entry, the CLI prints `[check]`, and eval transcripts and the scorecard
+count rewrites and fallbacks.
+
+**Measured false positives:** none of the 94 real Dewey replies in the saved eval runs and
+showcase was flagged. Those replies contained 46 amounts, 51 dates, 27 IDs, and 4 action claims.
 
 ### 11.3 Why not an LLM check first
 
@@ -529,8 +547,8 @@ failure mode, while regex/normalization covers Bookly's highest-risk facts and i
 regression-test. After measuring false positives and misses, an LLM check may be added for
 softer claims. It never replaces the hard gates.
 
-Entry point: `validate_reply(reply, evidence) -> ok | violations`, called in the loop right
-before the reply is returned.
+Entry point: `check_reply(reply, evidence) -> list[Violation]`, called by `deliver()` in the
+loop right before the reply is returned.
 
 ## 12. Prompts and knowledge
 
@@ -616,7 +634,12 @@ Recording (2:00 max): S2, S3, S5, plus S1 if there's room.
 
 ## 15. Testing strategy
 
-**Built (108 passing, no API key):**
+**Built (158 passing, no API key):**
+
+- `test_validation.py`: every violation code; amounts compared in cents; dates in every common
+  format, with wrong days and years flagged; quote subtotals and searched policy amounts
+  allowed; customer-typed amounts and `hint` text aren't evidence; future, conditional, and
+  negated claims pass; submitted, escalated, cancelled, and verified claims need their event.
 
 - `test_policy.py`: window edges (day 30 vs 31), ebook and preorder rules, resolution rules,
   refund math, one fee per return.
@@ -627,15 +650,17 @@ Recording (2:00 max): S2, S3, S5, plus S1 if there's room.
 - `test_agent.py` (scripted fake client): plain reply, request shape, tool round trips,
   parallel results in one message, `on_step` before each tool, chat can't submit and a new
   message invalidates the proposal, trusted action context, rollback, no partial replies,
-  refusal tracing, step cap.
+  refusal tracing, step cap; reply check: a clean draft costs no extra call, a bad draft gets
+  one rewrite with tools off and the same tools sent, a failed or cut-off rewrite sends the safe
+  fallback, history holds only what was shown, an API error mid-rewrite rolls back.
 - `test_app.py` (real Streamlit): canonical card, Confirm creates the RMA, Cancel and Reset
-  don't.
+  don't; the Developer trace shows a rejected draft.
 - `test_evals.py` (scripted model and customer): every scenario's reference run passes the
   gates and an empty run fails them; each gate catches its failure; claim regexes don't fire
   on "isn't submitted" or "will be submitted"; verdict rules, pass^k, and report files.
 
 **Still to add:** see section 18 (cents math, policy-doc parity, expiry and version checks,
-double-click, trace redaction, validator cases, adapter contracts).
+double-click, trace redaction, adapter contracts).
 
 ### 15.1 Scenario evals (built)
 
@@ -684,7 +709,7 @@ is Jillian's earlier Claude support agent for an outdoor gear store, built on th
 | Normalize input in code | Adopted | `get_order` (slice 3) |
 | Concrete persona examples | Adopted | `dewey.md` (slice 3) |
 | Fake-client loop tests + small DI | Adopted | `test_agent.py` (slice 5) |
-| Deterministic checks, then one rewrite | Adopting | Section 11 |
+| Deterministic checks, then one rewrite | Adopted | Section 11 |
 | Eval harness with deterministic gates | Adopting, with N trials | Section 15.1 |
 | Show tools only when the topic comes up | Deferred until more intents | Section 12 |
 | Redact the live trace | Production only; demo shows all | Section 13.2 |
@@ -707,7 +732,8 @@ Markdown prompts (vs one Python string), simpler checks (vs dense regexes).
 | `submit_return` turn check | Superseded by UI authorization | Didn't prove consent to exact terms | Replaced |
 | Policy and money | Pure Python; floats now, cents target | Deterministic, testable | Cents TODO |
 | Identity | Email + ZIP, locked once verified | Demo stand-in for a signed session | Done |
-| Final reply | Evidence-validated, deterministic first | Blocks unsupported facts and claims | TODO |
+| Final reply | Checked against trusted data, deterministic; one rewrite, then a safe fallback | Blocks unsupported facts and claims | Done |
+| Customer text as evidence | Never, at runtime (the eval gates allow echoes) | Dewey can't confirm an amount the customer guessed | Done |
 | Prompts | Markdown playbooks | Reviewable by CX; no hard commitments in prose | Done |
 | Knowledge | Keyword search with abstention | Small corpus; no embeddings needed | Done |
 | Trace | Full in demo; redacted in production | Demo proof vs production privacy | Partial |
@@ -746,14 +772,20 @@ Ordered by priority. Check items off as they land and note the commit.
 - [x] Add S12 ("typed yes doesn't submit") as a live scenario check (in `evals/`)
 - [ ] Update README "Limitations and next steps" to match this list
 
-### Then: final-reply evidence validation (highest-value safety layer)
+### Final-reply check (highest-value safety layer)
 
-- [ ] Evidence ledger built from trusted tool results and action events
-- [ ] Deterministic extraction + normalization (amounts, dates, IDs, statuses, action claims)
-- [ ] `validate_reply` wired into the loop before the reply is returned
-- [ ] One constrained repair (tools disabled), then a fixed safe fallback
-- [ ] Unit tests for every violation code, plus adversarial cases (S7-style injection)
-- [ ] Trace records violations; rejected drafts never enter history
+- [x] Evidence built from trusted tool results, action results, ticket, and verification
+- [x] Deterministic extraction + normalization (amounts in cents, dates, IDs, action claims)
+- [x] `check_reply` wired into the loop before the reply is returned (`deliver()`)
+- [x] One constrained repair (tools disabled), then a fixed safe fallback
+- [x] Unit tests for every violation code, plus adversarial cases (S7-style injection)
+- [x] Trace records violations; rejected drafts never enter history
+- [x] Eval gates share the same patterns; transcripts and scorecard count rewrites and fallbacks
+- [x] Live check: all 8 scenarios passed with the judge (`--trials 1`, $0.56); 0 rewrites, 0
+  fallbacks; S7 declined the "$200" demand without repeating it
+- [ ] Status and eligibility claims ("it's been delivered", "that's eligible")
+- [ ] Field-aware dates (an ETA can't be stated as a delivered date)
+- [ ] Optional LLM check for softer claims, once deterministic false-positive and miss rates are measured
 
 ### Then: canonical turns and events
 
@@ -800,7 +832,8 @@ Ordered by priority. Check items off as they land and note the commit.
 2. **Ownership:** every customer lookup and write derives identity from the session. ✅
 3. **Freshness:** commit rechecks ownership, policy, and current data. ✅ (expiry/versions TODO)
 4. **Idempotency:** retries can't create duplicate RMAs or tickets. ✅ (in-session)
-5. **Grounding:** sensitive facts and action claims are mechanically linked to evidence. ⬜
+5. **Grounding:** sensitive facts and action claims are mechanically linked to evidence. ✅
+   (amounts, dates, IDs, action claims; status wording TODO)
 6. **History integrity:** active history holds exactly what the customer saw plus trusted
    events. ⬜
 7. **Recovery:** partial, refused, and failed generations never reach the customer. ✅

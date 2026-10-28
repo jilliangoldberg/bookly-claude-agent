@@ -93,6 +93,9 @@ def transcript_markdown(g: Graded) -> str:
             lines.append(f"**App:** {e['text']}\n")
         elif k == "notice":
             lines.append(f"> {e['text']}\n")
+        elif k == "validation":
+            lines.append(f"> 🛡️ **Reply check** ({e['outcome']}): {'; '.join(e['violations'])}. "
+                         f"Rejected draft: _{e['draft']}_\n")
     lines += ["## Gates", ""]
     lines += [f"- {'✅' if x.ok else '❌'} `{x.name}` {x.detail}" for x in g.gates]
     if g.verdicts:
@@ -114,8 +117,8 @@ def scorecard(graded: list[Graded], errors: list[dict]) -> str:
         errored[e["scenario"]] += 1
 
     lines = ["# Eval scorecard", "",
-             "| Scenario | Suite | Valid | pass@1 | pass^k | Invalid | Errors | Needs review | Failing gates / dimensions |",
-             "|---|---|---|---|---|---|---|---|---|"]
+             "| Scenario | Suite | Valid | pass@1 | pass^k | Invalid | Errors | Needs review | Repaired / fallback | Failing gates / dimensions |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
     regression_misses = []
     for sid, gs in by_scenario.items():
         valid = [g for g in gs if g.verdict != "invalid"]
@@ -135,7 +138,9 @@ def scorecard(graded: list[Graded], errors: list[dict]) -> str:
         why = ", ".join(f"{r}×{c}" for r, c in sorted(reasons.items())) or "-"
         suite = gs[0].scenario.suite
         review = sum(bool(g.flags) for g in gs)  # trials where the judge answered "unknown" somewhere
-        lines.append(f"| {sid} | {suite} | {n} | {p1} | {pk} | {len(gs) - n} | {errored.get(sid, 0)} | {review} | {why} |")
+        checks = [e["outcome"] for g in gs for e in g.trial.events if e["kind"] == "validation"]
+        fixes = f"{checks.count('repaired')} / {checks.count('fallback')}"
+        lines.append(f"| {sid} | {suite} | {n} | {p1} | {pk} | {len(gs) - n} | {errored.get(sid, 0)} | {review} | {fixes} | {why} |")
         if suite == "regression" and n and passes < n:
             regression_misses.append(sid)
 

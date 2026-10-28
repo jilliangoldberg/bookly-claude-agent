@@ -11,6 +11,7 @@ from bookly.agent import handle_user_message
 from bookly.config import MAX_AGENT_STEPS, MODEL
 from bookly.models import SessionState
 from bookly.tools import dispatch
+from bookly.validation import SAFE_FALLBACK
 from tests.fakes import FakeClient, text_reply, tool_calls
 
 
@@ -149,3 +150,59 @@ def test_step_limit_hands_off_instead_of_looping_forever():
     reply = handle_user_message(session, "loop", api=fake)
     assert len(fake.requests) == MAX_AGENT_STEPS
     assert session.escalation["reason"] == "agent_stuck" and "ticket" in reply
+
+
+# --- The reply check: drafts with unsupported facts never reach the customer ---
+
+def test_a_clean_draft_is_appended_unchanged_with_no_extra_call():
+    draft = text_reply("Happy to help with your order!")
+    fake = FakeClient(draft)
+    session = SessionState()
+    assert handle_user_message(session, "hi", api=fake) == "Happy to help with your order!"
+    assert len(fake.requests) == 1
+    assert session.messages[-1] == {"role": "assistant", "content": draft.content}  # thinking blocks kept as-is
+
+
+def test_an_unsupported_draft_gets_one_rewrite_with_tools_off():
+    fake = FakeClient(text_reply("Your refund of $150 is on its way."), text_reply("I can check refund amounts once I find your order."))
+    session = SessionState()
+    reply = handle_user_message(session, "where's my refund?", api=fake)
+    assert reply == "I can check refund amounts once I find your order."
+    repair = fake.requests[1]
+    assert repair["tool_choice"] == {"type": "none"}
+    assert repair["tools"] == fake.requests[0]["tools"]  # same tools, so the cached prefix still matches
+    assert repair["messages"][-1]["role"] == "system" and "$150" in repair["messages"][-1]["content"]
+    # History holds only what the customer saw, as plain text; the draft and the instruction never enter it.
+    assert session.messages == [{"role": "user", "content": "where's my refund?"}, {"role": "assistant", "content": reply}]
+    [check] = [e for e in session.trace if e.kind == "validation"]
+    assert check.ok and check.output["outcome"] == "repaired"
+    assert check.output["violations"] == ["UNSUPPORTED_AMOUNT: '$150'"]
+
+
+def test_a_rewrite_that_still_fails_sends_the_safe_fallback():
+    fake = FakeClient(text_reply("I've submitted your return."), text_reply("Done, it's submitted: RMA-1001-1."))
+    session = SessionState()
+    assert handle_user_message(session, "return it", api=fake) == SAFE_FALLBACK
+    assert session.messages[-1] == {"role": "assistant", "content": SAFE_FALLBACK}
+    [check] = [e for e in session.trace if e.kind == "validation"]
+    assert not check.ok and check.output["outcome"] == "fallback" and check.output["repair_violations"]
+
+
+def test_an_empty_or_cut_off_rewrite_sends_the_safe_fallback():
+    fake = FakeClient(text_reply("Your refund is $150."), text_reply("Your ref", stop_reason="max_tokens"))
+    assert handle_user_message(SessionState(), "refund?", api=fake) == SAFE_FALLBACK
+
+
+def test_an_api_error_during_the_rewrite_rolls_back_the_turn():
+    session = SessionState(messages=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}])
+    fake = FakeClient(text_reply("Your refund is $150."), RuntimeError("API down"))
+    with pytest.raises(RuntimeError):
+        handle_user_message(session, "refund?", api=fake)
+    assert session.messages == [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
+
+
+def test_on_step_reports_the_reply_check():
+    steps = []
+    fake = FakeClient(text_reply("Your refund is $150."), text_reply("Let me look that up first."))
+    handle_user_message(SessionState(), "refund?", api=fake, on_step=lambda name, args: steps.append(name))
+    assert steps == ["check_reply"]

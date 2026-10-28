@@ -102,6 +102,11 @@ flowchart TD
 - **Traded off:** occasionally assuming wrong on low-stakes questions.
 - **Why:** over-asking is the most common way support bots feel robotic. Maya's one active order is assumed; Priya's two are asked about.
 
+**4. Check every reply against trusted data before it's sent.**
+- **Chose:** [`validation.py`](bookly/validation.py) checks each draft before the customer sees it. Every dollar amount, date, order/item/ticket/RMA/tracking ID, and completed-action claim ("I've submitted your return", "I've passed this to a teammate") must trace to a tool result, a Confirm/Cancel result, or the session. A draft that fails gets one rewrite with tools turned off; if that fails too, Dewey sends a fixed reply that states no facts and offers a retry or a teammate. Rejected drafts never enter the history, and the Developer trace shows each one.
+- **Traded off:** a deliberately strict rule. Amounts the customer typed don't count as evidence, so a polite decline that repeats "$200" gets rewritten. Status wording ("it's been delivered") isn't checked yet.
+- **Why:** code already controlled every action, but the model still wrote the words. Without this check, Dewey could state a wrong refund or claim a return went through when it hadn't. The check is plain regex and normalization, so it's fast, free, and unit-tested. It flagged none of the 94 real replies in the saved eval runs, which contained 46 amounts and 51 dates.
+
 ## Assumptions
 
 Every policy number lives in [`config.py`](bookly/config.py) and [`data/policies.md`](data/policies.md).
@@ -136,8 +141,13 @@ Found while running the demo scenarios against the live model:
 python -m pytest
 ```
 
-108 tests, no API key needed:
+158 tests, no API key needed:
 - [`test_policy.py`](tests/test_policy.py): return-window edges (day 30 vs 31), ebook rules, and refund math.
+- [`test_validation.py`](tests/test_validation.py): the reply check.
+  - Every kind of unsupported fact is caught: amounts, dates, IDs, and action claims.
+  - "$27" equals "$27.00"; "Oct 14", "October 14, 2026", and "10/14" all match a date from a tool result.
+  - Amounts the customer typed, and model-echoing `hint` text, aren't evidence.
+  - "Will be submitted once you click Confirm" passes; "I've submitted your return" needs a real Confirm.
 - [`test_tools.py`](tests/test_tools.py): the guardrails.
   - Wrong email and wrong ZIP look identical.
   - Verification locks after 3 failures.
@@ -152,9 +162,11 @@ python -m pytest
   - No partial replies on `max_tokens` or refusal.
   - The step limit.
   - A fabricated submit tool call cannot cross the application action boundary.
+  - A bad draft gets one rewrite with tools off, then the safe fallback; only the shown reply enters history.
 - [`test_app.py`](tests/test_app.py): the real Streamlit confirmation card.
   - Canonical book, order, and amount rendering.
   - Confirm creates the RMA; Cancel and Reset do not.
+  - The Developer trace shows a rejected draft.
 - [`test_evals.py`](tests/test_evals.py): the eval harness itself. Every scenario's reference run passes its graders, an empty run fails them, and each grader catches the failure it's for.
 
 ## Evals
@@ -184,7 +196,7 @@ Evals call the API and cost money; they never run in pytest. A gates-only trial 
 ## Limitations and next steps
 
 1. **Finish the eval baseline.** Run the full suite with the judge, calibrate the judge against human labels, then record pass@1 and pass^5 for every scenario.
-2. **Check replies before they're sent.** Every amount, date, order id, and RMA in a draft reply must appear in this session's tool results. A failing draft gets one constrained rewrite, then a safe fallback.
+2. **Widen the reply check.** It covers amounts, dates, IDs, and action claims today. Next: status and eligibility wording ("it's been delivered"), and checking that a date came from the right field (an ETA vs a delivered date).
 3. **Real integrations and authentication.** Replace the mock data with order-system and CRM APIs, and email + ZIP with a signed-in session. Production traces would be redacted; this demo shows everything on purpose.
 4. **Scaling to more intents.** Load procedures and tools only when their topic comes up, instead of sending all of them on every call.
 5. **Voice.** Streaming plus speech-to-text and text-to-speech, once the text agent is measured.

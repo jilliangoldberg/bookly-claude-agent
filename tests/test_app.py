@@ -4,6 +4,7 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from bookly.models import TraceEvent
 from bookly.tools import dispatch
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -82,3 +83,20 @@ def test_cancel_and_reset_do_not_submit():
     assert reset.pending_action is None
     assert reset.action_results == {}
     assert len(app.session_state["chat"]) == 1
+
+
+def test_developer_trace_shows_a_rejected_draft():
+    app = AppTest.from_file(APP_PATH).run(timeout=10)
+    session = app.session_state["agent_session"]
+    session.trace.append(TraceEvent(
+        turn=1, kind="validation", name="check_reply", input={"draft": "Your refund of $150 is on its way."},
+        output={"violations": ["UNSUPPORTED_AMOUNT: '$150'"], "outcome": "repaired",
+                "repair": "I can check once I find your order.", "repair_violations": []},
+        ok=True, latency_ms=0,
+    ))
+    app.session_state["view_mode"] = "Developer"
+    app.run(timeout=10)
+    assert not app.exception
+    [check] = [e for e in app.expander if "Reply check" in e.label]
+    assert "rewritten" in check.label
+    assert any("$150" in code.value for code in check.code)

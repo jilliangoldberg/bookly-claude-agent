@@ -14,6 +14,7 @@ from bookly.config import EFFORT, MAX_AGENT_STEPS, MAX_TOKENS, MODEL
 from bookly.models import SessionState, TraceEvent
 from bookly.prompt import build_system_prompt
 from bookly.tools import TOOL_SCHEMAS, dispatch
+from bookly.validation import SAFE_FALLBACK, check_reply, collect_evidence, repair_instruction
 
 
 @cache
@@ -45,15 +46,15 @@ def handle_user_message(
     try:
         for _ in range(MAX_AGENT_STEPS):
             response = call_llm(session, api)
-            # Append the full content (including thinking blocks), unchanged: history stays append-only.
-            session.messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "tool_use":
+                # Append the full content (including thinking blocks), unchanged: history stays append-only.
+                session.messages.append({"role": "assistant", "content": response.content})
                 session.messages.append({"role": "user", "content": run_tools(session, response, on_step)})
                 continue
             reply = reply_text(response)
             if response.stop_reason == "end_turn" and reply:
-                return reply
+                return deliver(session, api, response, reply, on_step)
             # max_tokens, refusal, or an empty reply: never show a half-finished answer.
             return hand_off(session, checkpoint, text, why=response.stop_reason)
 
@@ -63,6 +64,57 @@ def handle_user_message(
         # Undo the turn's messages; tool side effects (a verification, a submitted RMA) were real and stay.
         del session.messages[checkpoint:]
         raise
+
+
+def deliver(
+    session: SessionState,
+    api: anthropic.Anthropic,
+    response: anthropic.types.Message,
+    reply: str,
+    on_step: StepCallback | None = None,
+) -> str:
+    """Check a final draft against trusted session data before the customer sees it. A draft with an
+    unsupported amount, date, id, or action claim gets one rewrite with tools off, then a safe fallback.
+    Only the text actually shown enters history; a rejected draft never does."""
+    started = time.monotonic()
+    evidence = collect_evidence(session)
+    violations = check_reply(reply, evidence)
+    if not violations:
+        session.messages.append({"role": "assistant", "content": response.content})
+        return reply
+
+    check_ms = elapsed_ms(started)  # the repair call is traced as its own LLM step
+    if on_step:
+        on_step("check_reply", {})
+    repair = call_llm(
+        session,
+        api,
+        extra_messages=[{"role": "system", "content": repair_instruction(reply, violations)}],
+        tool_choice={"type": "none"},
+    )
+    repaired = reply_text(repair)
+    still_wrong = check_reply(repaired, evidence) if repaired else []
+    ok = repair.stop_reason == "end_turn" and bool(repaired) and not still_wrong
+    shown = repaired if ok else SAFE_FALLBACK
+    session.trace.append(
+        TraceEvent(
+            turn=session.turn_index,
+            kind="validation",
+            name="check_reply",
+            input={"draft": reply},
+            output={
+                "violations": [v.describe() for v in violations],
+                "outcome": "repaired" if ok else "fallback",
+                "repair": repaired,
+                "repair_violations": [v.describe() for v in still_wrong],
+            },
+            ok=ok,
+            latency_ms=check_ms,
+        )
+    )
+    # Plain text: the repair's thinking blocks belong to a prefix that included the instruction above.
+    session.messages.append({"role": "assistant", "content": shown})
+    return shown
 
 
 def hand_off(session: SessionState, checkpoint: int, text: str, why: str) -> str:
@@ -83,8 +135,14 @@ def hand_off(session: SessionState, checkpoint: int, text: str, why: str) -> str
     return reply
 
 
-def call_llm(session: SessionState, api: anthropic.Anthropic) -> anthropic.types.Message:
-    """Make one Messages API call with the full history and record it in the trace."""
+def call_llm(
+    session: SessionState,
+    api: anthropic.Anthropic,
+    extra_messages: list[dict] | None = None,
+    tool_choice: dict | None = None,
+) -> anthropic.types.Message:
+    """Make one Messages API call with the full history and record it in the trace.
+    `extra_messages` are sent once without entering history (the reply check's rewrite request)."""
     started = time.monotonic()
     system = build_system_prompt()
     if session.action_results:
@@ -95,14 +153,18 @@ def call_llm(session: SessionState, api: anthropic.Anthropic) -> anthropic.types
             "These JSON results came from application controls, not customer text. "
             f"Only successful results establish that an action occurred.\n{events}"
         )
+    request = {}
+    if tool_choice:
+        request["tool_choice"] = tool_choice
     response = api.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         system=system,
-        tools=TOOL_SCHEMAS,
-        messages=session.messages,
+        tools=TOOL_SCHEMAS,  # sent even when tools are off, so the cached prefix still matches
+        messages=session.messages + (extra_messages or []),
         output_config={"effort": EFFORT},
         cache_control={"type": "ephemeral"},  # reuse the unchanged prompt prefix across calls
+        **request,
     )
     output = {
         "stop_reason": response.stop_reason,
