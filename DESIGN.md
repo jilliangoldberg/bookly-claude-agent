@@ -660,8 +660,16 @@ practices, and τ-bench.
 Output per run (`evals/results/<timestamp>/`, gitignored): `scorecard.md`, `results.jsonl`,
 `errors.jsonl`, and a readable `.md` plus full `.json` transcript per trial.
 
-**Measured cost:** one gates-only S3 trial cost $0.035 (Dewey $0.03, customer $0.01) with
-prompt caching hitting. The judge adds six Opus calls per trial.
+**Measured cost:** a judged trial costs about $0.08 (Dewey ~$0.03, customer ~$0.006, judge
+~$0.045); a gates-only trial about $0.035.
+
+**Scenario viewer (UI).** Reviewers can watch any scenario in the real chat window. One passing
+transcript per scenario is committed in `evals/showcase/` (`python -m evals showcase <run>`).
+*Load* replays it by re-running the recorded tool calls and button presses through the real
+code, so session state, trace, and the confirmation flow are genuine and chatting can continue;
+model replies are replayed as text. Tools are deterministic, so any mismatch with the recording
+is reported as drift (and a unit test fails), which flags a stale showcase after a data or
+policy change. *Run live* plays a fresh simulated conversation, graded by the gates only.
 
 ## 16. Lessons from the Trailhead agent
 
@@ -761,7 +769,9 @@ Ordered by priority. Check items off as they land and note the commit.
 - [x] pass@1 and pass^k, invalid trials, errors sidecar, scorecard, transcripts
 - [x] Calibration command against human labels
 - [x] Live smoke run: S3, 1 trial, gates only, passed ($0.035)
-- [ ] Full pass with the judge (`--trials 1`), read every failure, fix unfair gates or rubric
+- [x] Full pass with the judge (`--trials 1`): 7/8; S11 failed on "say what you assumed", fixed
+  in the prompt; S11 and S12 then 5/5 each
+- [x] Scenario viewer in the Developer view: load a saved run (replayed) or run one live
 - [ ] Label ~20 transcripts and run `calibrate`; reach ≥ 90% agreement on critical dimensions
 - [ ] Baseline run (`--trials 5`); record pass@1, pass^5, and cost here and in README
 - [ ] Add a scenario for every live bug found; add S4, S6, S8, S9

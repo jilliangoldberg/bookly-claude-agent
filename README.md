@@ -173,6 +173,12 @@ python -m evals run                                       # all scenarios, 5 tri
 - **The scorecard** reports pass@1 and pass^k (all k trials pass) per scenario, plus cost. Each trial is also saved as a readable transcript under `evals/results/`.
 - **Calibration:** `python -m evals calibrate` compares the judge with human labels in `evals/labels.jsonl`.
 
+**Watch a scenario in the UI.** In the app's Developer view, *Eval scenarios* lists every scenario with its latest saved result:
+- **Load** replays a saved run (`evals/showcase/`) through the real tools and puts it in the chat window. It's free and instant, the session state and trace fill in, and you can keep chatting from where it ended. The Developer view shows how that run was graded.
+- **Run live** plays a fresh simulated customer against the model (about $0.04, gates only).
+
+Refresh the saved runs after an eval pass with `python -m evals showcase evals/results/<run>` (it skips any run that no longer replays identically).
+
 Evals call the API and cost money; they never run in pytest. A gates-only trial costs about $0.04.
 
 ## Limitations and next steps

@@ -15,6 +15,13 @@ from bookly.actions import cancel_reply, cancel_return, confirm_reply, confirm_r
 from bookly.agent import handle_user_message
 from bookly.data import customers
 from bookly.models import SessionState
+from evals.gates import run_gates
+from evals.recording import RecordingClient
+from evals.replay import load_showcase, replay
+from evals.report import Graded, decide, trial_record
+from evals.runner import run_trial
+from evals.scenarios import SCENARIOS, select
+from evals.simulator import SimulatedCustomer
 
 DEWEY_AVATAR = str(Path(__file__).parent / "assets" / "dewey.png")
 GREETING = "Hi, I'm Dewey, Bookly's bookworm! I can help with orders, returns, and store policies. What can I do for you?"
@@ -73,6 +80,8 @@ CSS = """
   .desk .dot { display: inline-block; width: 6px; height: 6px; background: #7c9b78; margin-right: 5px; }
   .desk .no { margin-left: auto; color: #b3a796; font: 10px "Courier New", monospace; }
   .chat-date { text-align: center; padding: 18px 0 14px; }
+  .replay-note { margin: 10px 0 0; padding: 6px 10px; border-radius: 8px; background: #f6ead6;
+    color: var(--leather); font-size: 0.75rem; text-align: center; }
 
   .st-key-chat-log [data-testid="stChatMessage"] { padding: 0.55rem 0.85rem; border-radius: 12px;
     background: var(--dewey); max-width: 90%; font-size: 0.92rem; gap: 0.6rem; }
@@ -114,6 +123,40 @@ def new_conversation() -> None:
     """Start a fresh session: new agent state and an empty chat transcript."""
     st.session_state.agent_session = SessionState()
     st.session_state.chat = [("assistant", GREETING)]  # what the customer sees, kept apart from raw API history
+    st.session_state.loaded_scenario = None  # an eval record shown in the chat, if one was loaded
+
+
+def show_scenario(record: dict, session: SessionState, chat: list[tuple[str, str]], drift: list[str]) -> None:
+    """Put a scenario's conversation into the chat window and switch to the Customer view to watch it."""
+    st.session_state.agent_session = session
+    st.session_state.chat = [("assistant", GREETING), *chat]
+    st.session_state.loaded_scenario = {**record, "drift": drift}
+    st.session_state.view_mode = "Customer"
+
+
+def load_saved_scenario(scenario_id: str) -> None:
+    """Replay a committed example run: free, instant, and the session is real, so chatting can continue."""
+    record = load_showcase()[scenario_id]
+    replayed = replay(record)
+    show_scenario(record, replayed.session, replayed.chat, replayed.drift)
+
+
+def run_live_scenario(scenario_id: str) -> None:
+    """Play a fresh simulated conversation against the live model, graded by the deterministic gates only."""
+    [scenario] = select([scenario_id])
+    client = anthropic.Anthropic()
+    calls = []
+    trial = run_trial(scenario, 1, agent_api=RecordingClient(client, "agent", calls),
+                      customer=SimulatedCustomer(RecordingClient(client, "customer", calls)), calls=calls)
+    if trial.status == "error":
+        st.session_state.live_error = f"{scenario_id} couldn't run: {trial.error}"
+        return
+    gates = run_gates(scenario, trial)
+    graded = Graded(scenario, trial, gates, verdicts=None)
+    graded.verdict, graded.flags = decide(scenario, gates, None)
+    chat = [("user" if e["kind"] == "customer" else "assistant", e["text"])
+            for e in trial.events if e["kind"] in ("customer", "dewey", "action_reply")]
+    show_scenario({**trial_record(graded), "live": True}, trial.session, chat, [])
 
 
 def typing_html(line: str | None = None) -> str:
@@ -302,6 +345,13 @@ def render_customer_view() -> None:
             </div>""",
             unsafe_allow_html=True,
         )
+        if loaded := st.session_state.loaded_scenario:
+            source = "live run" if loaded.get("live") else "saved eval run"
+            st.markdown(
+                f'<p class="replay-note">Eval scenario {loaded["scenario"]} · {source} · '
+                f'{loaded["verdict"]}. Grades are in the Developer view.</p>',
+                unsafe_allow_html=True,
+            )
         log = st.container(height=380, border=False, key="chat-log")
         with log:
             st.markdown('<p class="chat-date">You’ve opened a book</p>', unsafe_allow_html=True)
@@ -325,11 +375,59 @@ def render_customer_view() -> None:
                 st.rerun()
 
 
+VERDICT_BADGE = {"pass": "✅ pass", "fail": "❌ fail", "invalid": "➖ invalid"}
+
+
+def render_scenarios() -> None:
+    """Eval scenarios a reviewer can load into the chat: a saved run (free) or a fresh live one."""
+    saved = load_showcase()
+    # Open until something is loaded, then out of the way so its grades are visible.
+    expanded = st.session_state.loaded_scenario is None
+    with st.expander("Eval scenarios: load a full conversation into the chat", expanded=expanded):
+        st.caption(
+            "**Load** replays a saved eval run through the real tools, so session state and the trace fill in "
+            "and you can keep chatting. **Run live** plays a new simulated customer against the model "
+            "(about $0.04 and 30 seconds; graded by the deterministic checks only)."
+        )
+        for scenario in SCENARIOS:
+            record = saved.get(scenario.id)
+            name, verdict, load, live = st.columns([4, 1.2, 1, 1.1], vertical_alignment="center")
+            name.markdown(f"**{scenario.id}** · {scenario.title}  \n<small>{scenario.rationale}</small>",
+                          unsafe_allow_html=True)
+            verdict.markdown(VERDICT_BADGE.get(record["verdict"], "") if record else "no saved run")
+            load.button("Load", key=f"load-{scenario.id}", disabled=record is None,
+                        on_click=load_saved_scenario, args=(scenario.id,))
+            if live.button("Run live", key=f"live-{scenario.id}"):
+                st.session_state.live_run = scenario.id
+                st.rerun()
+
+
+def render_loaded_scenario() -> None:
+    """How the loaded scenario was graded: each deterministic check and each judge dimension."""
+    record = st.session_state.get("loaded_scenario")
+    if not record:
+        return
+    source = "live run" if record.get("live") else "saved run"
+    st.subheader(f"{record['scenario']} grades · {source} · {VERDICT_BADGE[record['verdict']]}")
+    for warning in record.get("drift", []):
+        st.warning(f"Replay drift: {warning}. The saved run may be out of date; re-run the evals.")
+    for gate in record["gates"]:
+        st.markdown(f"{'✅' if gate['ok'] else '❌'} `{gate['name']}` {gate['detail']}")
+    for dimension, verdict in record.get("judge", {}).items():
+        mark = {"pass": "✅", "fail": "❌", "unknown": "❔"}[verdict["verdict"]]
+        with st.expander(f"{mark} judge · {dimension}"):
+            st.markdown(escape_dollars(verdict["reasoning"]))
+
+
 def render_developer_view() -> None:
-    """The glass box: demo logins, what code has committed to, and every LLM/tool step."""
+    """The glass box: eval scenarios, demo logins, what code has committed to, and every LLM/tool step."""
     session = st.session_state.agent_session
+    if error := st.session_state.pop("live_error", None):
+        st.error(error)
+    render_scenarios()
     left, right = st.columns([1, 1.6], gap="large")
     with left:
+        render_loaded_scenario()
         render_demo_accounts()
         render_session_state(session)
     with right:
@@ -349,6 +447,9 @@ st.markdown(
 DEWEY_DATA_URI = "data:image/png;base64," + base64.b64encode(Path(DEWEY_AVATAR).read_bytes()).decode()
 if "agent_session" not in st.session_state:
     new_conversation()
+if live_id := st.session_state.pop("live_run", None):  # before the view toggle exists, so we can switch it
+    with st.spinner(f"Running {live_id} live: a simulated customer is talking to Dewey…"):
+        run_live_scenario(live_id)
 
 brand, mode_col = st.columns([3, 2], vertical_alignment="center")
 brand.markdown(

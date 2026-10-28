@@ -51,6 +51,23 @@ def test_confirm_button_records_the_actual_result():
     assert not any(button.label == "Confirm return" for button in app.button)
 
 
+def test_loading_a_saved_scenario_fills_the_chat_and_session():
+    app = AppTest.from_file(APP_PATH).run(timeout=10)
+    app.session_state["view_mode"] = "Developer"
+    app.run(timeout=10)
+    next(b for b in app.button if b.key == "load-S3").click().run(timeout=10)
+    assert not app.exception
+    assert app.session_state["view_mode"] == "Customer"
+    session = app.session_state["agent_session"]
+    assert session.verified_customer_id == "C001"
+    assert any(r.get("status") == "submitted" for r in session.action_results.values())
+    page = " ".join(m.value for m in app.markdown)
+    assert "Eval scenario S3" in page and "RMA-1001-1" in page
+
+    next(b for b in app.button if b.label == "Reset conversation").click().run(timeout=10)
+    assert app.session_state["loaded_scenario"] is None
+
+
 def test_cancel_and_reset_do_not_submit():
     app = app_with_proposal()
     next(button for button in app.button if button.label == "Cancel").click().run(timeout=10)

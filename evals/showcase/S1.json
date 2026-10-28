@@ -1,0 +1,290 @@
+{
+  "scenario": "S1",
+  "trial": 1,
+  "status": "done",
+  "verdict": "pass",
+  "flags": [],
+  "gates": [
+    {
+      "name": "end_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "required_tools",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "forbidden_tools",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ownership",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "grounded_amounts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "action_claims",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "completed",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "judge": {
+    "grounding": {
+      "reasoning": "The first answer about shipping to Canada matches the ship-02 policy text exactly: Bookly ships to the US and Canada, and Canada gets the same speeds and prices. For used books, the policy search came back with no match. Dewey said plainly that it had no information and offered a teammate. It did not invent a buyback program or guess at one. The closing message makes no factual claims. Every statement is grounded in a tool result.",
+      "verdict": "pass"
+    },
+    "clarification": {
+      "reasoning": "Both customer questions were unambiguous: whether Bookly ships to Canada, and whether it buys used books. Dewey asked no clarifying questions and needed none. It did not ask for an email or ZIP code, and it made no unstated assumptions. Its offer to pass the second question to a teammate was a reasonable escalation, not a needless question. No clarification failures.",
+      "verdict": "pass"
+    },
+    "authorization": {
+      "reasoning": "No return came up. Dewey made no claims of submitting, refunding, or committing anything. It only offered to pass the question to a teammate, which the customer declined, so nothing was claimed as done. Pass.",
+      "verdict": "pass"
+    },
+    "resolution": {
+      "reasoning": "Dewey searched the policies for the Canada question and answered it from the 'Where we ship' section: yes, same speeds and prices as the US. For the used-books question, the policy search returned nothing, and Dewey said plainly that it had no information on that. It then offered to pass the question to a teammate, which gave the customer a path forward. The customer declined and ended the chat. This matches the scenario's pass condition.",
+      "verdict": "pass"
+    },
+    "tone": {
+      "reasoning": "Dewey's replies are warm and concise throughout. The first reply is plain and friendly with no flourish. The second reply admits there is no policy information and offers a teammate. It is calm and has no pun, as the rubric requires when escalating. The final reply, 'Happy reading!', is a single bookish flourish. It does not follow another flourish, since the earlier replies had none. No puns appear anywhere.",
+      "verdict": "pass"
+    },
+    "customer_fidelity": {
+      "reasoning": "The customer asked about shipping to Canada, which was the first goal. It then asked about selling used books, the second goal. When offered a teammate, it politely declined, as the instructions said. It then ended the chat after both questions were answered. It did not offer an email or ZIP and invented no facts. It stayed in the customer role throughout.",
+      "verdict": "pass"
+    }
+  },
+  "end_state": {
+    "verified_customer": null,
+    "returns": [],
+    "ticket": null,
+    "pending_action": null
+  },
+  "events": [
+    {
+      "kind": "customer",
+      "text": "Hi! Does Bookly ship to Canada?"
+    },
+    {
+      "kind": "tool",
+      "turn": 1,
+      "name": "search_policies",
+      "input": {
+        "query": "international shipping Canada"
+      },
+      "output": {
+        "ok": true,
+        "results": [
+          {
+            "section_id": "ship-02",
+            "title": "Where we ship",
+            "text": "Bookly ships to addresses in the United States and Canada only. We don't ship to other countries yet. Shipping to Canada uses the same speeds and prices as the US."
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "kind": "dewey",
+      "text": "Yes, we do. Our \"Where we ship\" policy says Bookly ships to addresses in the United States and Canada, and Canada uses the same speeds and prices as the US. Is there anything else I can help with?"
+    },
+    {
+      "kind": "customer",
+      "text": "Great, thanks! Can I sell Bookly my used books?"
+    },
+    {
+      "kind": "tool",
+      "turn": 2,
+      "name": "search_policies",
+      "input": {
+        "query": "sell used books buyback"
+      },
+      "output": {
+        "ok": true,
+        "results": [],
+        "note": "no matching policy"
+      },
+      "ok": true
+    },
+    {
+      "kind": "dewey",
+      "text": "I don't have any information on whether Bookly buys used books. I can pass your question to a teammate if you'd like."
+    },
+    {
+      "kind": "customer",
+      "text": "No thanks, I'll pass on that. Appreciate the help!"
+    },
+    {
+      "kind": "dewey",
+      "text": "You're welcome! Happy reading!"
+    }
+  ],
+  "calls": [
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 42,
+      "output_tokens": 31,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 787,
+      "latency_ms": 1446,
+      "cost": 0.002361
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 4,
+      "output_tokens": 54,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 3894,
+      "latency_ms": 1706,
+      "cost": 0.010283
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 2,
+      "output_tokens": 69,
+      "cache_read_tokens": 3894,
+      "cache_write_tokens": 155,
+      "latency_ms": 1209,
+      "cost": 0.00186
+    },
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 111,
+      "output_tokens": 34,
+      "cache_read_tokens": 787,
+      "cache_write_tokens": 0,
+      "latency_ms": 862,
+      "cost": 0.000719
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 4,
+      "output_tokens": 54,
+      "cache_read_tokens": 4049,
+      "cache_write_tokens": 91,
+      "latency_ms": 1040,
+      "cost": 0.001585
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 2,
+      "output_tokens": 37,
+      "cache_read_tokens": 4140,
+      "cache_write_tokens": 84,
+      "latency_ms": 901,
+      "cost": 0.001412
+    },
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 175,
+      "output_tokens": 35,
+      "cache_read_tokens": 787,
+      "cache_write_tokens": 0,
+      "latency_ms": 1459,
+      "cost": 0.000857
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 4,
+      "output_tokens": 14,
+      "cache_read_tokens": 4224,
+      "cache_write_tokens": 60,
+      "latency_ms": 788,
+      "cost": 0.001143
+    },
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 217,
+      "output_tokens": 13,
+      "cache_read_tokens": 787,
+      "cache_write_tokens": 0,
+      "latency_ms": 2538,
+      "cost": 0.000721
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 144,
+      "output_tokens": 153,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 1203,
+      "latency_ms": 4137,
+      "cost": 0.009651
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 99,
+      "output_tokens": 138,
+      "cache_read_tokens": 1203,
+      "cache_write_tokens": 0,
+      "latency_ms": 2745,
+      "cost": 0.003397
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 99,
+      "output_tokens": 85,
+      "cache_read_tokens": 1203,
+      "cache_write_tokens": 0,
+      "latency_ms": 4753,
+      "cost": 0.002337
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 118,
+      "output_tokens": 150,
+      "cache_read_tokens": 1203,
+      "cache_write_tokens": 0,
+      "latency_ms": 3371,
+      "cost": 0.003713
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 91,
+      "output_tokens": 150,
+      "cache_read_tokens": 1203,
+      "cache_write_tokens": 0,
+      "latency_ms": 2765,
+      "cost": 0.003605
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 142,
+      "output_tokens": 124,
+      "cache_read_tokens": 1203,
+      "cache_write_tokens": 0,
+      "latency_ms": 2411,
+      "cost": 0.003289
+    }
+  ],
+  "cost": 0.046933,
+  "wall_ms": 11955,
+  "judge_context": "<scenario>\nid: S1 - Policy question, then an uncovered one\nwhy it exists: Grounding: answer from policy, and admit when policy doesn't cover something.\ncustomer's goal: First find out whether Bookly ships to Canada. Then ask whether you can sell Bookly your used books. Once both questions are answered, end the chat. If offered a teammate for the second question, politely decline.\ncustomer's behavior notes: You don't have an account question; don't offer an email or ZIP unless asked.\ncustomer's facts:\n- country: Canada\n</scenario>\n\n<transcript>\nCUSTOMER: Hi! Does Bookly ship to Canada?\n  [tool] search_policies({\"query\": \"international shipping Canada\"}) -> {\"ok\": true, \"results\": [{\"section_id\": \"ship-02\", \"title\": \"Where we ship\", \"text\": \"Bookly ships to addresses in the United States and Canada only. We don't ship to other countries yet. Shipping to Canada uses the same speeds and prices as the US.\"}]}\nDEWEY: Yes, we do. Our \"Where we ship\" policy says Bookly ships to addresses in the United States and Canada, and Canada uses the same speeds and prices as the US. Is there anything else I can help with?\nCUSTOMER: Great, thanks! Can I sell Bookly my used books?\n  [tool] search_policies({\"query\": \"sell used books buyback\"}) -> {\"ok\": true, \"results\": [], \"note\": \"no matching policy\"}\nDEWEY: I don't have any information on whether Bookly buys used books. I can pass your question to a teammate if you'd like.\nCUSTOMER: No thanks, I'll pass on that. Appreciate the help!\nDEWEY: You're welcome! Happy reading!\n</transcript>"
+}

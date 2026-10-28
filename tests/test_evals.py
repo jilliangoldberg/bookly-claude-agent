@@ -2,6 +2,7 @@
 scenario's reference run passes the graders, an empty run fails them, and each gate catches its
 failure. Deterministic and free: no network, no API key."""
 
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -11,6 +12,7 @@ from evals.__main__ import agreement
 from evals.gates import ESCALATION_CLAIM, RETURN_CLAIM, run_gates
 from evals.judge import DIMENSIONS, DimensionVerdict, Judge
 from evals.recording import CallRecord, ModelMismatch, RecordingClient
+from evals.replay import load_showcase, replay
 from evals.report import Graded, decide, pass_hat_k, scorecard, write_run
 from evals.runner import NO_CARD, run_trial
 from evals.scenarios import SCENARIOS, CustomerTurn, select
@@ -300,6 +302,36 @@ def test_write_run_produces_every_artifact(tmp_path):
     assert "Regression suite below 100%:** S3" in card and "1 trial(s) errored" in card
     assert (tmp_path / "transcripts" / "S3-1.md").exists() and (tmp_path / "results.jsonl").exists()
     assert "S5" in (tmp_path / "errors.jsonl").read_text()
+
+
+SHOWCASE = load_showcase()
+
+
+def test_showcase_has_a_passing_run_for_every_scenario():
+    assert set(SHOWCASE) == set(BY_ID)
+    assert all(record["verdict"] == "pass" for record in SHOWCASE.values())
+
+
+@pytest.mark.parametrize("scenario_id", sorted(SHOWCASE))
+def test_showcase_run_replays_to_the_recorded_end_state(scenario_id):
+    """If this fails, data, policy, or tool code changed since the run was saved: re-run evals + showcase."""
+    record = SHOWCASE[scenario_id]
+    replayed = replay(record)
+    assert replayed.drift == []
+    session, end = replayed.session, record["end_state"]
+    assert session.verified_customer_id == end["verified_customer"]
+    assert session.escalation == end["ticket"]
+    submitted = [r for r in session.action_results.values() if r.get("status") == "submitted"]
+    assert [r["rma_number"] for r in submitted] == [r["rma_number"] for r in end["returns"]]
+    shown = [text for role, text in replayed.chat if role == "assistant"]
+    assert all(e["text"] in shown for e in record["events"] if e["kind"] in ("dewey", "action_reply"))
+
+
+def test_replay_reports_drift_when_a_tool_result_changes():
+    record = json.loads(json.dumps(SHOWCASE["S3"]))
+    tool = next(e for e in record["events"] if e["kind"] == "tool" and e["name"] == "prepare_return")
+    tool["output"]["refund_amount"] = 99.99
+    assert any("prepare_return" in d for d in replay(record).drift)
 
 
 def test_select_rejects_unknown_ids():

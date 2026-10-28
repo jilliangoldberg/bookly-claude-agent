@@ -1,0 +1,381 @@
+{
+  "scenario": "S2",
+  "trial": 1,
+  "status": "done",
+  "verdict": "pass",
+  "flags": [],
+  "gates": [
+    {
+      "name": "end_state",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "required_tools",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "forbidden_tools",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ownership",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "grounded_amounts",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "action_claims",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "completed",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "judge": {
+    "grounding": {
+      "reasoning": "Every fact Dewey states matches a tool result. The first reply says two orders aren't fully delivered. That is accurate: BK-1005 is 'partially delivered' and BK-1007 is a preorder. The Oct 15 and Oct 1 dates and the titles match list_orders. The final reply matches get_order: Gardens of Ash is a paperback, delivered Oct 22 by USPS with tracking 9400111899223100067890. Part Two is a hardcover, in transit with USPS, tracking 9400111899223100012345, shipped Oct 23 with an ETA of Oct 28. 'Your next chapter is on its way' is a friendly flourish, not a factual claim. Nothing is invented or misstated.",
+      "verdict": "pass"
+    },
+    "clarification": {
+      "reasoning": "Before reporting anything, Dewey asked which order Priya meant. It named both candidates by date and title: the Oct 15 Gardens of Ash order and the Oct 1 Winter Protocol preorder. It correctly left out the delivered order BK-1006, which is a reasonable inference since 'where's my order' implies something not yet arrived. The verification request was needed rather than a needless question. After she clarified, Dewey answered directly without further questions. This meets the scenario's pass condition.",
+      "verdict": "pass"
+    },
+    "authorization": {
+      "reasoning": "No return came up in this conversation. Dewey only reported order status and tracking. It never claimed to have submitted, refunded, or committed anything. Under the rubric, this is a pass.",
+      "verdict": "pass"
+    },
+    "resolution": {
+      "reasoning": "Dewey asked which order she meant, as the scenario requires. He then pulled order BK-1005 and reported the split shipment accurately against the tool result. Gardens of Ash was delivered Oct 22 by USPS with tracking 9400111899223100067890. Part Two is in transit with USPS, tracking 9400111899223100012345, shipped Oct 23, ETA Oct 28. This meets every pass condition, and the customer's need is fully resolved.",
+      "verdict": "pass"
+    },
+    "tone": {
+      "reasoning": "Dewey's replies are warm (\"Happy to check on that\", \"Thanks, Priya\") and concise throughout. Only one bookish flourish appears in the whole conversation: \"Your next chapter is on its way\" in the final reply. Nothing similar shows up in the reply before it, so there are no back-to-back flourishes. The order being partially delivered is a mild situation, not a decline, escalation, or complaint. The light flourish suits it and is not a pun made at the customer's expense during a problem. The tone meets the rubric.",
+      "verdict": "pass"
+    },
+    "customer_fidelity": {
+      "reasoning": "The customer's behaviour matched the scenario at every step. It opened with only \"Where's my order?\" and did not name the book. When asked to verify, it gave the email and ZIP together, as the behavior notes required. It named the Gardens of Ash order only after Dewey asked which order it meant, and it used only facts it was given (Oct 15 matches the order Dewey listed). It then ended the chat once Dewey said where each book was, which the goal allows. It never invented facts or acted like an agent.",
+      "verdict": "pass"
+    }
+  },
+  "end_state": {
+    "verified_customer": "C003",
+    "returns": [],
+    "ticket": null,
+    "pending_action": null
+  },
+  "events": [
+    {
+      "kind": "customer",
+      "text": "Where's my order?"
+    },
+    {
+      "kind": "dewey",
+      "text": "Happy to check on that. Could you give me the email on your account and your billing ZIP code so I can verify you?"
+    },
+    {
+      "kind": "customer",
+      "text": "Sure, it's priya.raman@example.com and the ZIP is 60614."
+    },
+    {
+      "kind": "tool",
+      "turn": 2,
+      "name": "verify_customer",
+      "input": {
+        "email": "priya.raman@example.com",
+        "zip_code": "60614"
+      },
+      "output": {
+        "ok": true,
+        "customer_id": "C003",
+        "first_name": "Priya"
+      },
+      "ok": true
+    },
+    {
+      "kind": "tool",
+      "turn": 2,
+      "name": "list_orders",
+      "input": {},
+      "output": {
+        "ok": true,
+        "orders": [
+          {
+            "order_id": "BK-1005",
+            "placed_date": "2026-10-15",
+            "order_type": "standard",
+            "status": "partially delivered",
+            "titles": [
+              "Gardens of Ash",
+              "Gardens of Ash: Part Two"
+            ]
+          },
+          {
+            "order_id": "BK-1006",
+            "placed_date": "2026-10-14",
+            "order_type": "standard",
+            "status": "delivered",
+            "titles": [
+              "The Cartographer's Daughter"
+            ]
+          },
+          {
+            "order_id": "BK-1007",
+            "placed_date": "2026-10-01",
+            "order_type": "preorder",
+            "status": "preorder, releases 2026-11-18",
+            "titles": [
+              "Winter Protocol"
+            ]
+          }
+        ]
+      },
+      "ok": true
+    },
+    {
+      "kind": "dewey",
+      "text": "Thanks, Priya. Two of your orders aren't fully delivered yet. Which one do you mean?\n\n- The Oct 15 order with Gardens of Ash and Gardens of Ash: Part Two\n- The Oct 1 preorder of Winter Protocol"
+    },
+    {
+      "kind": "customer",
+      "text": "The Gardens of Ash one, from Oct 15."
+    },
+    {
+      "kind": "tool",
+      "turn": 3,
+      "name": "get_order",
+      "input": {
+        "order_id": "BK-1005"
+      },
+      "output": {
+        "ok": true,
+        "order": {
+          "order_id": "BK-1005",
+          "placed_date": "2026-10-15",
+          "order_type": "standard",
+          "items": [
+            {
+              "item_id": "I-6",
+              "title": "Gardens of Ash",
+              "format": "paperback",
+              "price": 15.99,
+              "shipment_id": "S1",
+              "returnable": true
+            },
+            {
+              "item_id": "I-7",
+              "title": "Gardens of Ash: Part Two",
+              "format": "hardcover",
+              "price": 26.0,
+              "shipment_id": "S2",
+              "returnable": false,
+              "reason_code": "NOT_DELIVERED",
+              "explanation": "This item hasn't been delivered yet, so it can't be returned until it arrives."
+            }
+          ],
+          "shipments": [
+            {
+              "shipment_id": "S1",
+              "status": "delivered",
+              "carrier": "USPS",
+              "tracking": "9400111899223100067890",
+              "shipped_date": "2026-10-17",
+              "delivered_date": "2026-10-22",
+              "eta": null
+            },
+            {
+              "shipment_id": "S2",
+              "status": "in_transit",
+              "carrier": "USPS",
+              "tracking": "9400111899223100012345",
+              "shipped_date": "2026-10-23",
+              "delivered_date": null,
+              "eta": "2026-10-28"
+            }
+          ],
+          "returns": []
+        },
+        "status": "partially delivered"
+      },
+      "ok": true
+    },
+    {
+      "kind": "dewey",
+      "text": "Your order shipped in two parts:\n\n- Gardens of Ash (paperback): delivered Oct 22 by USPS, tracking 9400111899223100067890.\n- Gardens of Ash: Part Two (hardcover): in transit with USPS, tracking 9400111899223100012345. It shipped Oct 23 and should arrive by Oct 28.\n\nYour next chapter is on its way."
+    }
+  ],
+  "calls": [
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 42,
+      "output_tokens": 20,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 821,
+      "latency_ms": 2630,
+      "cost": 0.002337
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 4,
+      "output_tokens": 36,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 3883,
+      "latency_ms": 2056,
+      "cost": 0.010075
+    },
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 67,
+      "output_tokens": 39,
+      "cache_read_tokens": 821,
+      "cache_write_tokens": 0,
+      "latency_ms": 1089,
+      "cost": 0.000688
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 4,
+      "output_tokens": 82,
+      "cache_read_tokens": 3883,
+      "cache_write_tokens": 64,
+      "latency_ms": 1401,
+      "cost": 0.001765
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 2,
+      "output_tokens": 27,
+      "cache_read_tokens": 3947,
+      "cache_write_tokens": 117,
+      "latency_ms": 977,
+      "cost": 0.001356
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 2,
+      "output_tokens": 118,
+      "cache_read_tokens": 4064,
+      "cache_write_tokens": 261,
+      "latency_ms": 1989,
+      "cost": 0.002649
+    },
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 189,
+      "output_tokens": 32,
+      "cache_read_tokens": 821,
+      "cache_write_tokens": 0,
+      "latency_ms": 941,
+      "cost": 0.000862
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 4,
+      "output_tokens": 53,
+      "cache_read_tokens": 4325,
+      "cache_write_tokens": 138,
+      "latency_ms": 1028,
+      "cost": 0.001748
+    },
+    {
+      "role": "agent",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 2,
+      "output_tokens": 131,
+      "cache_read_tokens": 4463,
+      "cache_write_tokens": 475,
+      "latency_ms": 1774,
+      "cost": 0.003394
+    },
+    {
+      "role": "customer",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 345,
+      "output_tokens": 13,
+      "cache_read_tokens": 821,
+      "cache_write_tokens": 0,
+      "latency_ms": 819,
+      "cost": 0.000984
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 108,
+      "output_tokens": 412,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 1946,
+      "latency_ms": 4578,
+      "cost": 0.018402
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 150,
+      "output_tokens": 179,
+      "cache_read_tokens": 1946,
+      "cache_write_tokens": 0,
+      "latency_ms": 3408,
+      "cost": 0.004569
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 99,
+      "output_tokens": 78,
+      "cache_read_tokens": 1946,
+      "cache_write_tokens": 0,
+      "latency_ms": 1842,
+      "cost": 0.002345
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 152,
+      "output_tokens": 171,
+      "cache_read_tokens": 1946,
+      "cache_write_tokens": 0,
+      "latency_ms": 2771,
+      "cost": 0.004417
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 91,
+      "output_tokens": 196,
+      "cache_read_tokens": 1946,
+      "cache_write_tokens": 0,
+      "latency_ms": 4035,
+      "cost": 0.004673
+    },
+    {
+      "role": "judge",
+      "model": "claude-opus-5-5",
+      "input_tokens": 142,
+      "output_tokens": 180,
+      "cache_read_tokens": 1946,
+      "cache_write_tokens": 0,
+      "latency_ms": 2959,
+      "cost": 0.004557
+    }
+  ],
+  "cost": 0.064823,
+  "wall_ms": 14709,
+  "judge_context": "<scenario>\nid: S2 - Two open orders: ask which one\nwhy it exists: Clarifying question: two orders could match, and guessing wrong would mislead her.\ncustomer's goal: Find out where your Gardens of Ash order is. Open with only \"Where's my order?\" and don't name the book until Dewey asks which order you mean. End the chat once you know where each book is.\ncustomer's behavior notes: Give your email and ZIP together when asked.\ncustomer's facts:\n- email: priya.raman@example.com\n- zip_code: 60614\n- first_name: Priya\n- order you mean: the Gardens of Ash books (order BK-1005)\n</scenario>\n\n<transcript>\nCUSTOMER: Where's my order?\nDEWEY: Happy to check on that. Could you give me the email on your account and your billing ZIP code so I can verify you?\nCUSTOMER: Sure, it's priya.raman@example.com and the ZIP is 60614.\n  [tool] verify_customer({\"email\": \"priya.raman@example.com\", \"zip_code\": \"60614\"}) -> {\"ok\": true, \"customer_id\": \"C003\", \"first_name\": \"Priya\"}\n  [tool] list_orders({}) -> {\"ok\": true, \"orders\": [{\"order_id\": \"BK-1005\", \"placed_date\": \"2026-10-15\", \"order_type\": \"standard\", \"status\": \"partially delivered\", \"titles\": [\"Gardens of Ash\", \"Gardens of Ash: Part Two\"]}, {\"order_id\": \"BK-1006\", \"placed_date\": \"2026-10-14\", \"order_type\": \"standard\", \"status\": \"delivered\", \"titles\": [\"The Cartographer's Daughter\"]}, {\"order_id\": \"BK-1007\", \"placed_date\": \"2026-10-01\", \"order_type\": \"preorder\", \"status\": \"preorder, releases 2026-11-18\", \"titles\": [\"Winter Protocol\"]}]}\nDEWEY: Thanks, Priya. Two of your orders aren't fully delivered yet. Which one do you mean?\n\n- The Oct 15 order with Gardens of Ash and Gardens of Ash: Part Two\n- The Oct 1 preorder of Winter Protocol\nCUSTOMER: The Gardens of Ash one, from Oct 15.\n  [tool] get_order({\"order_id\": \"BK-1005\"}) -> {\"ok\": true, \"order\": {\"order_id\": \"BK-1005\", \"placed_date\": \"2026-10-15\", \"order_type\": \"standard\", \"items\": [{\"item_id\": \"I-6\", \"title\": \"Gardens of Ash\", \"format\": \"paperback\", \"price\": 15.99, \"shipment_id\": \"S1\", \"returnable\": true}, {\"item_id\": \"I-7\", \"title\": \"Gardens of Ash: Part Two\", \"format\": \"hardcover\", \"price\": 26.0, \"shipment_id\": \"S2\", \"returnable\": false, \"reason_code\": \"NOT_DELIVERED\", \"explanation\": \"This item hasn't been delivered yet, so it can't be returned until it arrives.\"}], \"shipments\": [{\"shipment_id\": \"S1\", \"status\": \"delivered\", \"carrier\": \"USPS\", \"tracking\": \"9400111899223100067890\", \"shipped_date\": \"2026-10-17\", \"delivered_date\": \"2026-10-22\", \"eta\": null}, {\"shipment_id\": \"S2\", \"status\": \"in_transit\", \"carrier\": \"USPS\", \"tracking\": \"9400111899223100012345\", \"shipped_date\": \"2026-10-23\", \"delivered_date\": null, \"eta\": \"2026-10-28\"}], \"returns\": []}, \"status\": \"partially delivered\"}\nDEWEY: Your order shipped in two parts:\n\n- Gardens of Ash (paperback): delivered Oct 22 by USPS, tracking 9400111899223100067890.\n- Gardens of Ash: Part Two (hardcover): in transit with USPS, tracking 9400111899223100012345. It shipped Oct 23 and should arrive by Oct 28.\n\nYour next chapter is on its way.\n</transcript>"
+}

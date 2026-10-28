@@ -3,7 +3,8 @@ part of pytest.
 
   python -m evals list
   python -m evals run [--scenario S3 S5] [--trials 5] [--no-judge]
-  python -m evals calibrate [--labels evals/labels.jsonl]"""
+  python -m evals calibrate [--labels evals/labels.jsonl]
+  python -m evals showcase evals/results/<run> [...]   (free: saves examples for the UI)"""
 
 import argparse
 import json
@@ -17,6 +18,7 @@ from evals import AGENT_MODEL, CUSTOMER_MODEL, JUDGE_MODEL
 from evals.gates import run_gates
 from evals.judge import Judge
 from evals.recording import RecordingClient
+from evals.replay import SHOWCASE_DIR, replay
 from evals.report import Graded, decide, write_run
 from evals.runner import run_trial
 from evals.scenarios import SCENARIOS, select
@@ -112,6 +114,30 @@ def cmd_calibrate(args) -> int:
     return 0
 
 
+def cmd_showcase(args) -> int:
+    """Copy one passing transcript per scenario into evals/showcase/ (later run dirs win)."""
+    picked: dict[str, Path] = {}
+    for run_dir in map(Path, args.runs):
+        in_this_run: dict[str, Path] = {}  # first passing trial per scenario in this run
+        for path in sorted((run_dir / "transcripts").glob("*.json")):
+            record = json.loads(path.read_text())
+            if record["verdict"] == "pass":
+                in_this_run.setdefault(record["scenario"], path)
+        picked.update(in_this_run)  # a later run replaces an earlier one
+    if not picked:
+        print("No passing transcripts in those runs.", file=sys.stderr)
+        return 1
+    SHOWCASE_DIR.mkdir(exist_ok=True)
+    for scenario_id, path in sorted(picked.items()):
+        replayed = replay(json.loads(path.read_text()))
+        if replayed.drift:
+            print(f"skip {scenario_id}: replay drift: {'; '.join(replayed.drift)}", file=sys.stderr)
+            continue
+        (SHOWCASE_DIR / f"{scenario_id}.json").write_text(path.read_text())
+        print(f"{scenario_id}: {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m evals", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -125,6 +151,9 @@ def main(argv: list[str] | None = None) -> int:
     cal = sub.add_parser("calibrate", help="Compare the judge with human labels (spends API credits).")
     cal.add_argument("--labels", default=str(ROOT / "labels.jsonl"))
     cal.set_defaults(func=cmd_calibrate)
+    show = sub.add_parser("showcase", help="Save one passing transcript per scenario for the UI's scenario viewer.")
+    show.add_argument("runs", nargs="+", help="Run directories under evals/results/, oldest first.")
+    show.set_defaults(func=cmd_showcase)
     args = parser.parse_args(argv)
     try:
         return args.func(args)
