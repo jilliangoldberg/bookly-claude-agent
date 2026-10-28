@@ -107,3 +107,11 @@ def test_sidebar_trace_shows_a_rejected_draft():
     [check] = [e for e in app.sidebar.expander if "Reply check" in e.label]
     assert "rewritten" in check.label
     assert any("$150" in code.value for code in check.code)
+
+
+def test_missing_api_key_gets_a_plain_message_not_a_crash(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    app = AppTest.from_file(APP_PATH).run(timeout=10)
+    app.chat_input[0].set_value("Where is my order?").run(timeout=10)
+    assert not app.exception
+    assert "ANTHROPIC_API_KEY" in app.session_state["chat"][-1][1]

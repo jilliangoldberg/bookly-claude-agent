@@ -1,9 +1,10 @@
-"""Streamlit UI: a Customer view with Dewey's chat in a small window, and a Developer "glass box"
-view showing what code decided (session state) and every LLM step and tool call (trace).
+"""Streamlit UI: a Customer view with Dewey's chat in a small window, and a Developer view of the eval scenarios,
+and a "Behind the scenes" sidebar showing what code decided (session state) and every LLM step and tool call (trace).
 UI only; all logic is in bookly/. Run: streamlit run app.py"""
 
 import base64
 import json
+import os
 import random
 from pathlib import Path
 from urllib.parse import quote
@@ -216,10 +217,13 @@ def handle_input(text: str) -> None:
             if line := TOOL_STATUS.get(tool_name):
                 status.markdown(typing_html(line), unsafe_allow_html=True)
 
-        try:
-            reply = handle_user_message(st.session_state.agent_session, text, on_step=show_step)
-        except anthropic.APIError as exc:
-            reply = f"Sorry, I couldn't reach my bookshelf just now ({type(exc).__name__}). Please try again."
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            reply = "I can't reach my bookshelf: ANTHROPIC_API_KEY isn't set. Add it to .env (see .env.example) and restart."
+        else:
+            try:
+                reply = handle_user_message(st.session_state.agent_session, text, on_step=show_step)
+            except anthropic.APIError as exc:
+                reply = f"Sorry, I couldn't reach my bookshelf just now ({type(exc).__name__}). Please try again."
         status.markdown(escape_dollars(reply))
     st.session_state.chat.append(("assistant", reply))
 
@@ -494,7 +498,7 @@ def render_scenario_panel() -> None:
 
 
 def render_developer_view() -> None:
-    """Eval scenarios beside the selected conversation and its grades (the live chat's trace is on the Customer tab)."""
+    """Eval scenarios beside the selected conversation and its grades (traces are in the Behind the scenes sidebar)."""
     if error := st.session_state.pop("live_error", None):
         st.error(error)
     scenarios, panel = st.columns([1.15, 2.2], gap="large")

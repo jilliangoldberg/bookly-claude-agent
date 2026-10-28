@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-27  
 Status: slices 1–5 built; return authorization unified behind application controls; eval
-harness built; replies checked against trusted data before they're sent. 158 tests pass with no
+harness built; replies checked against trusted data before they're sent. 160 tests pass with no
 API key.
 
 This is the single running design doc for the project. It records every design decision, the
@@ -421,8 +421,9 @@ registry doesn't import). Target: each registry entry declares its tier explicit
 - `message` is safe to paraphrase to the customer.
 - `hint` is model guidance, never presented as a business fact.
 - Successful results carry structured facts (future evidence-ledger input).
-- Internal exceptions become `TOOL_ERROR`. Today the `repr` is attached as `debug` for the
-  demo trace; target is restricted server logs only.
+- Internal exceptions become `TOOL_ERROR`. The `repr` is attached as `debug` for the
+  demo trace but stripped before the result goes back to the model; target is restricted server
+  logs only.
 
 ### 8.3 Parallel calls
 
@@ -634,7 +635,7 @@ Recording (2:00 max): S2, S3, S5, plus S1 if there's room.
 
 ## 15. Testing strategy
 
-**Built (158 passing, no API key):**
+**Built (160 passing, no API key):**
 
 - `test_validation.py`: every violation code; amounts compared in cents; dates in every common
   format, with wrong days and years flagged; quote subtotals and searched policy amounts
@@ -654,7 +655,7 @@ Recording (2:00 max): S2, S3, S5, plus S1 if there's room.
   one rewrite with tools off and the same tools sent, a failed or cut-off rewrite sends the safe
   fallback, history holds only what was shown, an API error mid-rewrite rolls back.
 - `test_app.py` (real Streamlit): canonical card, Confirm creates the RMA, Cancel and Reset
-  don't; the Developer trace shows a rejected draft.
+  don't; the Behind the scenes trace shows a rejected draft.
 - `test_evals.py` (scripted model and customer): every scenario's reference run passes the
   gates and an empty run fails them; each gate catches its failure; claim regexes don't fire
   on "isn't submitted" or "will be submitted"; verdict rules, pass^k, and report files.
@@ -768,7 +769,7 @@ Ordered by priority. Check items off as they land and note the commit.
 - [ ] Convert money to integer cents in `policy.py`, `Quote`, and actions; update tests
 - [ ] Policy-number parity test across `config.py`, `policy.py`, and `policies.md`
 - [ ] Validate JSON and policy headings at load time
-- [ ] Keep exception `repr` out of model-visible tool results (server log only)
+- [x] Keep exception `repr` out of model-visible tool results (trace only)
 - [ ] Add a double-click / retry UI test for Confirm
 - [x] Add S12 ("typed yes doesn't submit") as a live scenario check (in `evals/`)
 - [ ] Update README "Limitations and next steps" to match this list

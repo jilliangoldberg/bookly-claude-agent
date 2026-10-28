@@ -206,3 +206,12 @@ def test_on_step_reports_the_reply_check():
     fake = FakeClient(text_reply("Your refund is $150."), text_reply("Let me look that up first."))
     handle_user_message(SessionState(), "refund?", api=fake, on_step=lambda name, args: steps.append(name))
     assert steps == ["check_reply"]
+
+
+def test_tool_crash_details_stay_out_of_the_model_history():
+    fake = FakeClient(tool_calls(("search_policies", {"bogus": 1})), text_reply("Sorry, something went wrong."))
+    session = SessionState()
+    handle_user_message(session, "hi", api=fake)
+    [result] = fake.requests[1]["messages"][-1]["content"]
+    assert '"TOOL_ERROR"' in result["content"] and "debug" not in result["content"]
+    assert "TypeError" in session.trace[1].output["debug"]  # still visible to developers in the trace

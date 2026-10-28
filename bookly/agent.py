@@ -203,7 +203,8 @@ def run_tools(
             {
                 "type": "tool_result",
                 "tool_use_id": block.id,  # must match the tool_use block it answers
-                "content": json.dumps(output),
+                # `debug` (an exception repr) stays in the trace for us; the model never sees internals.
+                "content": json.dumps({k: v for k, v in output.items() if k != "debug"}),
                 "is_error": not output.get("ok", False),
             }
         )
