@@ -6,10 +6,11 @@ import re
 from bookly import data
 from bookly.models import SessionState, tool_error, tool_ok
 
-MIN_MATCH_SHARE = 0.5  # a section must contain at least half the query's keywords to count as an answer
+# A section needs at least half the query's keywords to count
+MIN_MATCH_SHARE = 0.5
 MAX_RESULTS = 3
 
-# Words that carry no meaning for matching. "book" is here because almost every policy mentions books.
+# No matching value; "book" because almost every policy mentions books
 STOPWORDS = {
     "a", "an", "the", "and", "or", "to", "of", "in", "on", "for", "with", "my", "me", "i", "you", "your",
     "we", "us", "our", "do", "does", "can", "could", "is", "are", "it", "this", "that", "how", "what",
@@ -73,7 +74,8 @@ def search_policies(session: SessionState, query: str) -> dict:
     for section in data.policies():
         overlap = len(wanted & keywords(section["title"] + " " + section["text"]))
         if overlap / len(wanted) >= MIN_MATCH_SHARE:
-            title_hits = len(wanted & keywords(section["title"]))  # a title match is the strongest signal
+            # A title match is the strongest signal
+            title_hits = len(wanted & keywords(section["title"]))
             scored.append((overlap + title_hits, section))
     scored.sort(key=lambda pair: pair[0], reverse=True)
 
@@ -85,7 +87,8 @@ def search_policies(session: SessionState, query: str) -> dict:
 
 def escalate_to_human(session: SessionState, reason: str, summary: str) -> dict:
     """Create a mock support ticket for a teammate (once per session) and return its id."""
-    if session.escalation:  # idempotent: a second handoff in the same chat reuses the first ticket
+    # Idempotent: a second handoff in the same chat reuses the first ticket
+    if session.escalation:
         return tool_ok(**session.escalation, already_open=True)
     if len(summary.strip()) < 20:
         return tool_error(

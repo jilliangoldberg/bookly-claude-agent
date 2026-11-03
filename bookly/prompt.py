@@ -5,11 +5,12 @@ from functools import cache
 
 from bookly.config import PROMPTS_DIR, TODAY
 
-# Order matters: rules first, then voice, then procedures.
+# Order matters: rules, voice, then procedures
 PROMPT_FILES = ["base.md", "dewey.md", "order_status.md", "returns.md", "general.md"]
 
 
-@cache  # the prompt never changes during a run, which also keeps it byte-identical for prompt caching
+# Never changes during a run; byte-identical for prompt caching
+@cache
 def build_system_prompt() -> str:
     """Join the prompt files into one system prompt, filling in today's date."""
     parts = [(PROMPTS_DIR / name).read_text().strip() for name in PROMPT_FILES]

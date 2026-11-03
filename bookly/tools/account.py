@@ -4,7 +4,7 @@ from bookly import data
 from bookly.config import MAX_VERIFY_ATTEMPTS
 from bookly.models import SessionState, tool_error, tool_ok
 
-# One message for every failure, so a caller can't tell a wrong email from a wrong ZIP.
+# One message for every failure; can't tell wrong email from wrong ZIP
 VERIFY_FAILED_MESSAGE = "That email and ZIP code don't match an account."
 
 VERIFY_CUSTOMER_SCHEMA = {
@@ -57,6 +57,7 @@ def verify_customer(session: SessionState, email: str, zip_code: str) -> dict:
             hint="Ask the customer to double-check both. Never say which one was wrong.",
         )
 
+    # Identity lives in the session from here on; no tool takes a customer ID
     session.verified_customer_id = match["customer_id"]
     session.verified_first_name = match["first_name"]
     return tool_ok(customer_id=match["customer_id"], first_name=match["first_name"])

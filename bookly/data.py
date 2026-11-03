@@ -8,6 +8,7 @@ from functools import cache
 from bookly.config import DATA_DIR
 
 
+# Each loader reads its file once per process
 @cache
 def customers() -> list[dict]:
     """Return all mock customers."""

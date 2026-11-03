@@ -23,9 +23,11 @@ def tool_error(error_code: str, message: str, hint: str | None = None) -> dict:
 class TraceEvent:
     """One step the agent took, shown in the UI's 'glass box' trace."""
 
-    turn: int  # which customer message this step belongs to
+    # Which customer message this step belongs to
+    turn: int
     kind: Literal["llm", "tool", "validation"]
-    name: str  # model name for LLM steps, tool name for tool calls, "check_reply" for the reply check
+    # Model name, tool name, or "check_reply"
+    name: str
     input: dict
     output: dict
     ok: bool
@@ -40,15 +42,19 @@ class Quote:
     order_id: str
     item_ids: list[str]
     item_titles: list[str]
-    reason: str  # changed_mind | damaged | wrong_item
-    resolution: str  # refund_original | store_credit | replacement
+    # changed_mind | damaged | wrong_item
+    reason: str
+    # refund_original | store_credit | replacement
+    resolution: str
     refund_amount: float
     fee: float
-    label: str  # prepaid | fee_deducted
+    # prepaid | fee_deducted
+    label: str
     timing: str
     created_turn: int
 
 
+# Frozen: a proposal can't be edited after it's shown
 @dataclass(frozen=True)
 class PendingAction:
     """An immutable proposal only the application UI can confirm."""
@@ -64,13 +70,23 @@ class PendingAction:
 class SessionState:
     """Everything one conversation remembers. Nothing outlives the session (no PII at rest)."""
 
-    turn_index: int = 0  # +1 per customer message; later used to prove a confirmation came on a new turn
-    messages: list[Any] = field(default_factory=list)  # full API history, appended to, never edited
-    verified_customer_id: str | None = None  # set only by verify_customer; order tools read identity from here
-    verified_first_name: str | None = None  # so Dewey can say "Happy reading, Maya"
-    verify_attempts: int = 0  # failed verification tries this session
-    quotes: dict[str, Quote] = field(default_factory=dict)  # quote_id -> canonical proposal
-    pending_action: PendingAction | None = None  # displayed and authorized outside the model loop
-    action_results: dict[str, dict] = field(default_factory=dict)  # token -> idempotent confirm/cancel result
-    escalation: dict | None = None  # the handoff ticket, once one exists; one per session
+    # +1 per customer message; proves a confirmation came on a new turn
+    turn_index: int = 0
+    # Full API history; append-only
+    messages: list[Any] = field(default_factory=list)
+    # Set only by verify_customer; order tools read identity from here
+    verified_customer_id: str | None = None
+    # For "Happy reading, Maya"
+    verified_first_name: str | None = None
+    # Failed verification tries this session
+    verify_attempts: int = 0
+    # quote_id -> canonical proposal
+    quotes: dict[str, Quote] = field(default_factory=dict)
+    # Shown and authorized outside the model loop
+    pending_action: PendingAction | None = None
+    # token -> confirm/cancel result; makes retries idempotent
+    action_results: dict[str, dict] = field(default_factory=dict)
+    # Handoff ticket, once one exists; one per session
+    escalation: dict | None = None
+    # Every LLM call, tool call, and reply check; the sidebar shows it
     trace: list[TraceEvent] = field(default_factory=list)

@@ -11,17 +11,19 @@ from bookly.config import TODAY
 from bookly.models import SessionState
 
 MONEY = re.compile(r"\$\s?(\d[\d,]*(?:\.\d{1,2})?)")
-MONEY_KEYS = {"price", "refund_amount", "fee"}  # the only JSON numbers that are money
-UNTRUSTED_KEYS = {"hint", "debug"}  # tool-result fields that can echo the model's own input
+# Only JSON numbers that count as money
+MONEY_KEYS = {"price", "refund_amount", "fee"}
+# Tool-result fields that can echo the model's own input
+UNTRUSTED_KEYS = {"hint", "debug"}
 
-# Completed-action claims only; "will be submitted", "isn't submitted", "once you click" don't match.
+# Completed-action claims only; "will be submitted", "once you click" don't match
 RETURN_CLAIM = re.compile(
     r"\b(?:(?:has|have) been|(?:I've|I have|we've|we have)|is now)\s+(?:submitted|processed|issued|refunded)\b"
     r"|\breturn (?:is|was) (?:submitted|processed)\b|\bRMA-\d"
     r"|\b(?:I've|I have|we've|we have) (?:emailed|sent you)\b",
     re.IGNORECASE,
 )
-# "Passed/sent" only counts when a person is named nearby, so "I've sent you a label" isn't a handoff.
+# "Passed/sent" counts only near a named person; "I've sent you a label" isn't a handoff
 ESCALATION_CLAIM = re.compile(
     r"\b(?:I've|I have|we've|we have|has been|have been)\s+(?:escalated\b|(?:passed|handed|sent|forwarded)\b"
     r"(?=[^.?!]{0,40}\b(?:teammate|team|human|colleague|specialist|person)\b))"
@@ -36,13 +38,14 @@ VERIFIED_CLAIM = re.compile(
     re.IGNORECASE,
 )
 
+# Order, item, quote, proposal, ticket, RMA, and tracking-number IDs
 IDS = re.compile(
     r"\b(?:BK|I|Q|PA|T)-\d+\b|\bRMA-\d+(?:-\d+)*\b|\b1Z[0-9A-Z]{16}\b|\b\d{20,22}\b", re.IGNORECASE
 )
 
 MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
           "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
-# Capitalized month names only, so "you may 3..." style prose can't match.
+# Capitalized month names only, so "you may 3" can't match
 NAMED_DATE = re.compile(
     r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|"
     r"Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b"
@@ -51,6 +54,7 @@ NAMED_DATE = re.compile(
 SLASH_DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b")
 ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
+# Shown when the rewrite also fails; states no facts
 SAFE_FALLBACK = (
     "Sorry, I couldn't double-check every detail in my answer, so I'd rather not guess. "
     "Could you ask me again, or would you like me to pass this to a teammate?"
@@ -74,8 +78,10 @@ class Evidence:
 class Violation:
     """One unsupported fact or claim in a draft reply."""
 
-    code: str  # UNSUPPORTED_AMOUNT | UNSUPPORTED_DATE | UNSUPPORTED_ID | UNSUPPORTED_ACTION
-    text: str  # the exact span from the reply
+    # UNSUPPORTED_AMOUNT | UNSUPPORTED_DATE | UNSUPPORTED_ID | UNSUPPORTED_ACTION
+    code: str
+    # Exact span from the reply
+    text: str
 
     def describe(self) -> str:
         return f"{self.code}: {self.text!r}"
@@ -98,7 +104,8 @@ def add_cents(cents: set[int], value, key: str | None = None) -> None:
     elif isinstance(value, dict):
         for k, v in value.items():
             add_cents(cents, v, k)
-        if "refund_amount" in value and "fee" in value:  # "$27.00 minus the $4.99 fee"
+        # Also the pre-fee subtotal: "$27.00 minus the $4.99 fee"
+        if "refund_amount" in value and "fee" in value:
             cents.add(round((value["refund_amount"] + value["fee"]) * 100))
     elif isinstance(value, list):
         for v in value:
@@ -124,6 +131,7 @@ def trusted(output: dict) -> dict:
 
 def collect_evidence(session: SessionState) -> Evidence:
     """Gather amounts, dates, ids, and completed actions from trusted session data only."""
+    # Trusted only: tool results (minus echo fields), button results, the ticket
     sources = [trusted(e.output) for e in session.trace if e.kind == "tool"]
     sources += list(session.action_results.values())
     if session.escalation:
@@ -135,6 +143,7 @@ def collect_evidence(session: SessionState) -> Evidence:
         add_cents(cents, source)
         collect_strings(source, strings)
 
+    # Today is always a safe date to mention
     dates = {TODAY}
     ids: set[str] = set()
     for s in strings:
@@ -162,10 +171,12 @@ def check_reply(reply: str, evidence: Evidence) -> list[Violation]:
     """Every unsupported amount, date, id, and completed-action claim in a draft reply."""
     found: list[Violation] = []
 
+    # Amounts: every $ figure must match trusted cents
     for m in MONEY.finditer(reply):
         if to_cents(m.group(1)) not in evidence.cents:
             found.append(Violation("UNSUPPORTED_AMOUNT", m.group(0)))
 
+    # Dates: named, slash, and ISO formats
     for m in NAMED_DATE.finditer(reply):
         year = int(m.group(3)) if m.group(3) else None
         if not date_supported(MONTHS[m.group(1)[:3].lower()], int(m.group(2)), year, evidence):
@@ -179,17 +190,20 @@ def check_reply(reply: str, evidence: Evidence) -> list[Violation]:
         if not date_supported(mo, d, y, evidence):
             found.append(Violation("UNSUPPORTED_DATE", m.group(0)))
 
+    # IDs: must appear in a trusted source
     for m in IDS.finditer(reply):
         if m.group(0).upper() not in evidence.ids:
             found.append(Violation("UNSUPPORTED_ID", m.group(0)))
 
+    # Completed-action claims need a real action behind them
     claims = ((RETURN_CLAIM, evidence.return_submitted), (CANCEL_CLAIM, evidence.return_cancelled),
               (ESCALATION_CLAIM, evidence.escalated), (VERIFIED_CLAIM, evidence.verified))
     for pattern, happened in claims:
         if not happened and (m := pattern.search(reply)):
             found.append(Violation("UNSUPPORTED_ACTION", m.group(0)))
 
-    return list(dict.fromkeys(found))  # one entry per distinct span
+    # One entry per distinct span
+    return list(dict.fromkeys(found))
 
 
 def repair_instruction(draft: str, violations: list[Violation]) -> str:

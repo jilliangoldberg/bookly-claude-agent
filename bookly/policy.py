@@ -5,7 +5,7 @@ from datetime import date
 
 from bookly.config import EBOOK_REFUND_DAYS, RETURN_LABEL_FEE, RETURN_WINDOW_DAYS
 
-# Plain-language reason for each "no", so Dewey explains decisions it didn't make itself.
+# Plain-language reason per "no", so Dewey explains decisions it didn't make
 INELIGIBLE_EXPLANATIONS = {
     "PREORDER": "Preorders haven't shipped yet, so there's nothing to return. Cancellations go to a teammate.",
     "NOT_DELIVERED": "This item hasn't been delivered yet, so it can't be returned until it arrives.",
@@ -23,6 +23,7 @@ def days_since(iso_date: str, today: date) -> int:
 
 def ineligible_reason(order: dict, item: dict, today: date, returned_item_ids: set[str]) -> str | None:
     """Return why an item can't be returned (a reason code), or None if it can."""
+    # Checked in order: returned, preorder, ebook rules, delivered, window
     if item["item_id"] in returned_item_ids:
         return "ALREADY_RETURNED"
     if order["order_type"] == "preorder":
@@ -37,7 +38,8 @@ def ineligible_reason(order: dict, item: dict, today: date, returned_item_ids: s
     shipment = next(s for s in order["shipments"] if s["shipment_id"] == item["shipment_id"])
     if shipment["status"] != "delivered":
         return "NOT_DELIVERED"
-    if days_since(shipment["delivered_date"], today) > RETURN_WINDOW_DAYS:  # day 30 is still allowed
+    # Day 30 still allowed
+    if days_since(shipment["delivered_date"], today) > RETURN_WINDOW_DAYS:
         return "OUT_OF_WINDOW"
     return None
 
@@ -49,12 +51,15 @@ def resolution_allowed(reason: str, resolution: str) -> bool:
 
 def quote_amounts(items: list[dict], reason: str, resolution: str) -> dict:
     """Compute refund, fee, and label type for the eligible items of one return."""
-    subtotal = round(sum(item["price"] for item in items), 2)  # floats are fine at demo scale; real money would use cents
+    # Floats fine at demo scale; real money would use cents
+    subtotal = round(sum(item["price"] for item in items), 2)
 
-    if reason in ("damaged", "wrong_item"):  # our mistake: no fee, prepaid label
+    # Our mistake: no fee, prepaid label
+    if reason in ("damaged", "wrong_item"):
         refund = 0.0 if resolution == "replacement" else subtotal
         return {"refund_amount": refund, "fee": 0.0, "label": "prepaid"}
-    if resolution == "store_credit":  # change of mind, kept as credit: full amount, no fee
+    # Change of mind, kept as credit: full amount, no fee
+    if resolution == "store_credit":
         return {"refund_amount": subtotal, "fee": 0.0, "label": "prepaid"}
-    # Change of mind back to the original payment: the label fee comes out of the refund.
+    # Change of mind to original payment: label fee comes out of the refund
     return {"refund_amount": round(subtotal - RETURN_LABEL_FEE, 2), "fee": RETURN_LABEL_FEE, "label": "fee_deducted"}

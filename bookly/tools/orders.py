@@ -92,6 +92,7 @@ def list_orders(session: SessionState) -> dict:
 def find_order(session: SessionState, order_id: str) -> dict | None:
     """Look up an order only if it belongs to the verified customer; otherwise None."""
     wanted = normalize_order_id(order_id)
+    # Order ID and verified customer must both match; someone else's order looks nonexistent
     return next(
         (o for o in data.orders() if o["order_id"] == wanted and o["customer_id"] == session.verified_customer_id),
         None,
@@ -101,6 +102,7 @@ def find_order(session: SessionState, order_id: str) -> dict | None:
 def returned_item_ids(session: SessionState, order: dict) -> set[str]:
     """Items with a return already on file or submitted earlier in this chat."""
     on_file = {item_id for r in order["returns"] for item_id in r["item_ids"]}
+    # Submitted via Confirm earlier in this chat
     this_chat = {
         item_id
         for result in session.action_results.values()
@@ -125,8 +127,10 @@ def get_order(session: SessionState, order_id: str) -> dict:
 
     order = find_order(session, order_id)
     if order is None:
-        return order_not_found(order_id)  # same answer for someone else's order and a fake one, so nothing leaks
+        # Same answer for someone else's order and a fake one, so nothing leaks
+        return order_not_found(order_id)
 
+    # Customer ID stays out of what the model sees
     details = {k: v for k, v in order.items() if k != "customer_id"}
     details["items"] = [{**item, **item_returnability(session, order, item)} for item in order["items"]]
     return tool_ok(order=details, status=overall_status(order))

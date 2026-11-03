@@ -18,6 +18,7 @@ def _remember(session: SessionState, token: str, result: dict) -> dict:
 
 def confirm_return(session: SessionState, token: str) -> dict:
     """Revalidate and submit the exact pending proposal authorized by a UI control."""
+    # Token already used: return the stored result, so a double-click can't create two returns
     previous = session.action_results.get(token)
     if previous is not None:
         result = deepcopy(previous)
@@ -25,9 +26,11 @@ def confirm_return(session: SessionState, token: str) -> dict:
             result["already_submitted"] = True
         return result
 
+    # Must be the current proposal
     pending = session.pending_action
     if pending is None or pending.token != token or pending.kind != "submit_return":
         return tool_error("ACTION_NOT_FOUND", "That return proposal is no longer available.")
+    # Same verified customer the proposal was made for
     if session.verified_customer_id != pending.customer_id:
         return _remember(
             session,
@@ -39,6 +42,7 @@ def confirm_return(session: SessionState, token: str) -> dict:
     if quote is None:
         return _remember(session, token, tool_error("QUOTE_NOT_FOUND", "That return quote is no longer available."))
 
+    # Order still belongs to this customer
     order = find_order(session, quote.order_id)
     if order is None:
         return _remember(session, token, tool_error("ORDER_NOT_FOUND", "That order is no longer available."))
@@ -51,6 +55,7 @@ def confirm_return(session: SessionState, token: str) -> dict:
             tool_error("ACTION_STALE", "The books in this proposal have changed. Please prepare it again."),
         )
 
+    # Re-run eligibility and amounts; anything changed since the quote -> ACTION_STALE
     returned = returned_item_ids(session, order)
     items = [items_by_id[item_id] for item_id in quote.item_ids]
     if any(ineligible_reason(order, item, TODAY, returned) is not None for item in items):
@@ -81,6 +86,7 @@ def confirm_return(session: SessionState, token: str) -> dict:
         if quote.label == "prepaid"
         else f"return label (${quote.fee:.2f} deducted from refund)"
     )
+    # Store the result and clear the proposal
     return _remember(
         session,
         token,

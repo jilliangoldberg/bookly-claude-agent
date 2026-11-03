@@ -31,9 +31,11 @@ PREPARE_RETURN_SCHEMA = {
 
 def prepare_return(session: SessionState, order_id: str, item_ids: list[str], reason: str, resolution: str) -> dict:
     """Check policy, price eligible items, and stage an immutable UI-authorized proposal."""
+    # Clear any earlier proposal first
     session.pending_action = None
     if session.verified_customer_id is None:
         return NOT_VERIFIED
+    # Scoped to the verified customer
     order = find_order(session, order_id)
     if order is None:
         return order_not_found(order_id)
@@ -57,6 +59,7 @@ def prepare_return(session: SessionState, order_id: str, item_ids: list[str], re
     eligible, ineligible = [], []
     for item_id in item_ids:
         item = items_by_id[item_id]
+        # Eligibility decided in policy.py, never by the model
         code = ineligible_reason(order, item, TODAY, already_returned)
         if code is None:
             eligible.append(item)
@@ -72,6 +75,7 @@ def prepare_return(session: SessionState, order_id: str, item_ids: list[str], re
         )
         return {**ineligible_error, "ineligible_items": ineligible}
 
+    # Amounts from policy.py; the model does no math
     amounts = quote_amounts(eligible, reason, resolution)
     quote = Quote(
         quote_id=f"Q-{len(session.quotes) + 1}",
@@ -85,6 +89,7 @@ def prepare_return(session: SessionState, order_id: str, item_ids: list[str], re
         **amounts,
     )
     session.quotes[quote.quote_id] = quote
+    # Frozen proposal tied to this customer and quote; only the UI's Confirm can submit it
     pending = PendingAction(
         token=f"PA-{len(session.quotes)}",
         kind="submit_return",

@@ -9,7 +9,8 @@ import anthropic
 from bookly.agent import handle_user_message
 from bookly.models import SessionState
 
-DIM, RESET = "\033[2m", "\033[0m"  # terminal colors, so tool calls fade behind the conversation
+# Terminal colors, so tool calls fade behind the conversation
+DIM, RESET = "\033[2m", "\033[0m"
 
 
 def print_new_tool_calls(session: SessionState, already_shown: int) -> None:
@@ -53,6 +54,7 @@ def main() -> None:
             continue
         print_new_tool_calls(session, shown)
         print(f"\nDewey: {reply}")
+        # No confirm path here: only a UI button reaches actions/
         if session.pending_action:
             print(f"{DIM}(Return proposal {session.pending_action.token} is ready; confirm or cancel it in Streamlit.){RESET}")
 

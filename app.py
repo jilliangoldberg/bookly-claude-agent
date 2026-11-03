@@ -27,18 +27,18 @@ from evals.simulator import SimulatedCustomer
 DEWEY_AVATAR = str(Path(__file__).parent / "assets" / "dewey.png")
 GREETING = "Hi, I'm Dewey, Bookly's bookworm! I can help with orders, returns, and store policies. What can I do for you?"
 
-# One sample opener per demo customer, so a reviewer can start chatting in seconds.
+# One sample opener per demo customer, so a reviewer can start chatting fast
 SAMPLE_PROMPTS = {
     "C001": ["Where's my order?", "I'd like to return a book."],
     "C002": ["I want to return Northern Lines.", "Refund my ebook, The Quiet Engine."],
     "C003": ["Where's my order?", "My Cartographer's Daughter arrived with a torn cover."],
 }
 
-# Openers shown under the greeting before the customer has typed anything.
+# Openers under the greeting before the customer types
 QUICK_PROMPTS = ["Where's my order?", "Start a return", "Do you ship to Canada?"]
 
-# While Dewey works: plain typing dots, a line naming the tool step, or (only on a slow turn
-# with no tool yet) one of these, faded in after a few seconds.
+# While Dewey works: typing dots plus a fixed line per tool step
+# Slow turn with no tool yet: one of SLOW_TURN_LINES fades in
 TOOL_STATUS = {
     "verify_customer": "Checking your account…",
     "list_orders": "Looking through your orders…",
@@ -46,11 +46,12 @@ TOOL_STATUS = {
     "prepare_return": "Working out your refund…",
     "search_policies": "Checking store policy…",
     "escalate_to_human": "Passing this to a teammate…",
-    "check_reply": "Double-checking the details…",  # the reply check is rewriting a draft
+    # Reply check is rewriting a draft
+    "check_reply": "Double-checking the details…",
 }
 SLOW_TURN_LINES = ["Flipping through the pages…", "Still reading…", "Checking the shelves…"]
 
-# Small "chat window" layout: a story column on the left, a fixed-height chat card on the right.
+# Small chat-window layout: story column left, fixed-height chat card right
 CSS = """
 <style>
   :root { --ink: #3b2f2a; --muted: #8b7d70; --paper: #fffdf8; --leather: #8a5a35;
@@ -151,8 +152,10 @@ def escape_dollars(text: str) -> str:
 def new_conversation() -> None:
     """Start a fresh session: new agent state and an empty chat transcript."""
     st.session_state.agent_session = SessionState()
-    st.session_state.chat = [("assistant", GREETING)]  # what the customer sees, kept apart from raw API history
-    st.session_state.loaded_scenario = None  # an eval record shown in the chat, if one was loaded
+    # What the customer sees, kept apart from raw API history
+    st.session_state.chat = [("assistant", GREETING)]
+    # Eval record shown in the chat, if one was loaded
+    st.session_state.loaded_scenario = None
 
 
 def show_scenario(record: dict, session: SessionState, chat: list[tuple[str, str]], drift: list[str]) -> None:
@@ -213,14 +216,17 @@ def handle_input(text: str) -> None:
         status = st.empty()
         status.markdown(typing_html(), unsafe_allow_html=True)
 
+        # Status-line callback for the agent loop; fixed text per tool, never model values
         def show_step(tool_name: str, _tool_input: dict) -> None:
             if line := TOOL_STATUS.get(tool_name):
                 status.markdown(typing_html(line), unsafe_allow_html=True)
 
+        # No API key: plain message instead of a crash
         if not os.getenv("ANTHROPIC_API_KEY"):
             reply = "I can't reach my bookshelf: ANTHROPIC_API_KEY isn't set. Add it to .env (see .env.example) and restart."
         else:
             try:
+                # Hand-off to the agent; everything above is presentation
                 reply = handle_user_message(st.session_state.agent_session, text, on_step=show_step)
             except anthropic.APIError as exc:
                 reply = f"Sorry, I couldn't reach my bookshelf just now ({type(exc).__name__}). Please try again."
@@ -234,6 +240,7 @@ def show_action_reply(reply: str) -> None:
     st.session_state.chat.append(("assistant", reply))
 
 
+# Button callbacks: the only route from the UI into bookly/actions/
 def confirm_pending_return(token: str) -> None:
     """Submit the exact proposal selected by the application's Confirm button."""
     show_action_reply(confirm_reply(confirm_return(st.session_state.agent_session, token)))
@@ -249,6 +256,7 @@ def render_confirmation(session: SessionState) -> None:
     pending = session.pending_action
     if pending is None:
         return
+    # Card drawn from the saved Quote, not the model's wording
     quote = session.quotes[pending.quote_id]
     with st.container(border=True):
         st.markdown("#### Confirm this return")
@@ -264,6 +272,7 @@ def render_confirmation(session: SessionState) -> None:
         lines.append(f"**Timing:** {quote.timing}")
         st.markdown("  \n".join(lines))
         confirm, cancel = st.columns(2)
+        # Carries the proposal token; this click is the authorization
         confirm.button(
             "Confirm return",
             type="primary",
@@ -405,6 +414,7 @@ def render_customer_view() -> None:
                 for prompt in QUICK_PROMPTS:
                     st.button(prompt, on_click=queue_prompt, args=(prompt,))
 
+        # Typed text, or a queued quick prompt
         typed = st.chat_input("Ask Dewey about an order, a return, or a policy...")
         if text := typed or st.session_state.pop("queued_prompt", None):
             with log:
@@ -510,9 +520,10 @@ def render_developer_view() -> None:
 
 # ---------------- Page ----------------
 st.set_page_config(page_title="Dewey · Bookly Support", page_icon=DEWEY_AVATAR, layout="wide",
-                   initial_sidebar_state="collapsed")  # "Behind the scenes" opens from a small top-left button
+                   # "Behind the scenes" opens from a small top-left button
+                   initial_sidebar_state="collapsed")
 st.markdown(CSS, unsafe_allow_html=True)
-# Faint line-art books tiled behind the page; embedded so the background needs no image requests.
+# Faint line-art books behind the page; embedded so no image requests
 BOOK_PATTERN = quote((Path(__file__).parent / "assets" / "book-pattern.svg").read_text())
 st.markdown(
     f'<style>.stApp {{ background-image: url("data:image/svg+xml,{BOOK_PATTERN}"); '
@@ -520,9 +531,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 DEWEY_DATA_URI = "data:image/png;base64," + base64.b64encode(Path(DEWEY_AVATAR).read_bytes()).decode()
+# Streamlit re-runs this file on every interaction; create the session only once
 if "agent_session" not in st.session_state:
     new_conversation()
-if live_id := st.session_state.pop("live_run", None):  # before the view toggle exists, so we can switch it
+# Before the view toggle exists, so we can switch it
+if live_id := st.session_state.pop("live_run", None):
     with st.spinner(f"Running {live_id} live: a simulated customer is talking to Dewey…"):
         run_live_scenario(live_id)
 
